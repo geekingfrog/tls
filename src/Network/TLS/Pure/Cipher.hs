@@ -15,6 +15,11 @@ instance Wire.ToWire CipherSuites where
         Serial.putWord16be (fromIntegral $ V.length suites * 2)
         mapM_ Wire.put suites
 
+instance Wire.FromWire CipherSuites where
+    get = do
+        len <- fromIntegral <$> Serial.getWord16be
+        CipherSuites <$> Serial.isolate len (V.replicateM (len `quot` 2) Wire.get)
+
 data Cipher
     = AES128_GCM
     | AES256_GCM

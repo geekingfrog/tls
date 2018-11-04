@@ -33,11 +33,14 @@ executable tls
   ghc-options:         -fwarn-incomplete-patterns -Werror
 
   other-modules:       Network.TLS.Pure.Extension
+                     , Network.TLS.Pure.Version
                      , Network.TLS.Pure.Packet
                      , Network.TLS.Pure.Packet.Handshake
+                     , Network.TLS.Pure.Handshake.Header
                      , Network.TLS.Pure.Wire
                      , Network.TLS.Pure.Cipher
                      , Network.TLS.Pure.Cipher.Serialize
                      , Util
+                     , TestTypes
                      -- , Network.TLS.Pure.
                      -- , Network.TLS.Pure.Packet.Handshake
