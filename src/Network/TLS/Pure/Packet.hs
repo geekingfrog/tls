@@ -10,7 +10,7 @@ import Control.Monad
 
 import qualified Numeric                    as N
 import qualified Data.List.Split            as Split
-import Util as Util
+import qualified Util
 
 import qualified Data.Bits                          as Bits
 import qualified Data.ByteString                    as B
@@ -84,7 +84,7 @@ instance Wire.FromWire HandshakePacket where
         case handshakeType of
             Handshake.ClientHello -> ClientHello <$> Wire.get
             Handshake.ServerHello -> ServerHello <$> Wire.get
-            _ -> error "wip"
+            _ -> error "wip FromWire HandshakePacket"
 
 
 data ClientHelloData
@@ -92,7 +92,7 @@ data ClientHelloData
     { chlodRandom     :: !B.ByteString -- TODO
     , chlodSessionId  :: !Wire.Opaque8 -- TODO
     , chlodCiphers    :: !Cipher.CipherSuites
-    , chlodExtensions :: !(Ext.Extensions Handshake.ClientHello)
+    , chlodExtensions :: !Ext.Extensions
     }
     deriving (Show)
 
@@ -118,7 +118,7 @@ instance Wire.FromWire ClientHelloData where
         rnd <- Serial.getByteString 32
         sess <- Wire.get
         ciphers <- Wire.get
-        exts <- Wire.get
+        exts <- Ext.parseExtensions Handshake.ClientHello
         pure $ ClientHelloData
             { chlodRandom     = rnd
             , chlodSessionId  = sess
@@ -131,7 +131,7 @@ data ServerHelloData = ServerHelloData
     { shlodRandom     :: !B.ByteString
     , shlodSessionId  :: !Wire.Opaque8
     , shlodCipher     :: !Cipher.Cipher
-    , shlodExtensions :: !(Ext.Extensions Handshake.ServerHello)
+    , shlodExtensions :: !Ext.Extensions
     }
     deriving Show
 
@@ -141,7 +141,7 @@ instance Wire.FromWire ServerHelloData where
         sess <- Wire.get
         cipher <- Wire.get
         Serial.skip 1 -- skip compression method
-        exts <- Wire.get
+        exts <- Ext.parseExtensions Handshake.ServerHello
         -- rawExts <- Util.bsToHex <$> Serial.getByteString 46
         -- D.traceShow rawExts (pure ())
         pure $ ServerHelloData
@@ -150,44 +150,6 @@ instance Wire.FromWire ServerHelloData where
             , shlodCipher = cipher
             , shlodExtensions = exts
             }
-
--- parseTLSPacket :: Serial.Get TLSPacket
--- parseTLSPacket = do
---     code <- Wire.get
---     version <- Wire.get
---     unless (version == Version.TLS10) $ fail $ "Invalid version: " <> show version
---     l <- fromIntegral <$> Serial.getWord16be
---     Serial.isolate l $ case code of
---         TLSPacketCodeHandshake -> Handshake <$> parseHandshake
-
-
-    -- content <- Serial.isolate l (Serial.getByteString l) -- TODO
-    -- let chloData = ClientHelloData
-    --         { chlodCiphers = undefined
-    --         , chlodRandom = undefined
-    --         , chlodExtensions = undefined
-    --         }
-    -- pure $ Handshake $ ClientHello undefined
-    -- -- error "wip parseTLSPacket"
-
--- parseHandshake :: Serial.Get HandshakePacket
--- parseHandshake = do
---     code <- Wire.get
---     l <- fromIntegral <$> Wire.getWord24be
---     version <- Wire.get
---     unless (version == Version.TLS12) $ fail $ "Invalid version for tls13: " <> show version
---     Serial.isolate l $ case code of
---         Handshake.ClientHello -> ClientHello <$> parseClientHelloData
---         Handshake.ServerHello -> ServerHello <$> parseServerHelloData
---         _ -> fail $ "handshake code not handled yet: " <> show code
-
-
--- parseClientHelloData :: Serial.Get ClientHelloData
--- parseClientHelloData = undefined
---
--- parseServerHelloData :: Serial.Get ServerHelloData
--- parseServerHelloData = undefined
-
 
 -- hardcoded = hexToBs
 --     $ map (fst . head . N.readHex)

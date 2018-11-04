@@ -1,10 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE LambdaCase #-}
-{-# LANGUAGE DataKinds #-}
-{-# LANGUAGE KindSignatures #-}
-{-# LANGUAGE FlexibleInstances #-}
-{-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE BangPatterns #-}
 
 
@@ -12,9 +7,6 @@ module Network.TLS.Pure.Extension where
 
 import           Control.Monad
 import           Data.Functor
-import           Type.Reflection                ( Typeable
-                                                , typeRep
-                                                )
 
 import qualified Data.ByteString               as B
 import qualified Data.Serialize.Put            as Serial
@@ -27,36 +19,6 @@ import qualified Network.TLS.Pure.Handshake.Header
 import qualified Network.TLS.Pure.Wire         as Wire
 import           Network.TLS.Pure.Version       ( Version(..) )
 
-newtype Extensions (a :: Handshake.HandshakeType)
-    = Extensions (V.Vector (Extension a))
-    deriving (Show)
-
-instance Wire.ToWire (Extensions a) where
-    put (Extensions exts)
-        | V.null exts = pure ()
-        | otherwise = do
-            let extensionBytes = Serial.runPut (mapM_ Wire.put exts)
-            Serial.putWord16be $ fromIntegral (B.length extensionBytes)
-            Serial.putByteString extensionBytes
-
-instance Typeable a => Wire.FromWire (Extensions a) where
-    get = do
-        len <- fromIntegral <$> Serial.getWord16be
-        Extensions . V.fromList <$> Serial.isolate len (parseExtensions [])
-      where
-          parseExtensions :: [Extension a] -> Serial.Get [Extension a]
-          parseExtensions acc = do
-              r <- Serial.remaining
-              if r == 0
-                 then pure $! reverse acc
-                 else do
-                     !ext <- Wire.get
-                     parseExtensions (ext : acc)
-              -- Serial.remaining >>= \case
-              -- 0 -> pure $! reverse acc
-              -- _ -> do
-              --     !ext <- Wire.get
-              --     parseExtensions (ext : acc)
 
 data ExtensionType
     = ETServerNameIndication
@@ -69,6 +31,16 @@ data ExtensionType
     | ETUnknown Word16
     deriving (Show)
 
+instance Wire.ToWire ExtensionType where
+    put ETServerNameIndication = Serial.putWord16be 0
+    put ETSupportedGroups      = Serial.putWord16be 10
+    put ETSignatureAlgs        = Serial.putWord16be 13
+    put ETSupportedVersions    = Serial.putWord16be 43
+    put ETSignatureCookie      = Serial.putWord16be 44
+    put ETSignatureAlgsCert    = Serial.putWord16be 50
+    put ETKeyShare             = Serial.putWord16be 51
+    put (ETUnknown w)          = Serial.putWord16be w
+
 instance Wire.FromWire ExtensionType where
     get = Serial.getWord16be >>= \case
         0   -> pure ETServerNameIndication
@@ -80,64 +52,41 @@ instance Wire.FromWire ExtensionType where
         51  -> pure ETKeyShare
         t   -> pure $ ETUnknown t
 
-instance Wire.ToWire ExtensionType where
-    put ETServerNameIndication = Serial.putWord16be 0
-    put ETSupportedGroups      = Serial.putWord16be 10
-    put ETSignatureAlgs        = Serial.putWord16be 13
-    put ETSupportedVersions    = Serial.putWord16be 43
-    put ETSignatureCookie      = Serial.putWord16be 44
-    put ETSignatureAlgsCert    = Serial.putWord16be 50
-    put ETKeyShare             = Serial.putWord16be 51
-    put (ETUnknown w)          = Serial.putWord16be w
 
-newtype SupportedGroupsExtension (a :: Handshake.HandshakeType)
-    = SupportedGroupsExtension (V.Vector Group)
+newtype Extensions
+    = Extensions (V.Vector Extension)
     deriving (Show)
 
-instance Wire.ToWire (SupportedGroupsExtension a) where
-    put (SupportedGroupsExtension groups) = do
-        let len = V.length groups
-        Serial.putWord16be (fromIntegral $ len * 2 + 2)
-        Serial.putWord16be (fromIntegral $ len * 2)
-        mapM_ Wire.put groups
+instance Wire.ToWire Extensions where
+    put (Extensions exts)
+        | V.null exts = pure ()
+        | otherwise = do
+            let extensionBytes = Serial.runPut (mapM_ Wire.put exts)
+            Serial.putWord16be $ fromIntegral (B.length extensionBytes)
+            Serial.putByteString extensionBytes
 
-instance Wire.FromWire (SupportedGroupsExtension Handshake.ClientHello) where
-    get = parseSupportedGroupsExtension
-
-instance Wire.FromWire (SupportedGroupsExtension Handshake.EncryptedExtensions) where
-    get = parseSupportedGroupsExtension
-
-instance Typeable a => Wire.FromWire (SupportedGroupsExtension a) where
-    get = invalidExtensionFor "Supported Groups" (typeRep @a)
-
-parseSupportedGroupsExtension :: Serial.Get (SupportedGroupsExtension a)
-parseSupportedGroupsExtension = SupportedGroupsExtension <$> parseArray 2
-
-
-newtype CookieExtension (a :: Handshake.HandshakeType)
-    = CookieExtension Wire.Opaque16
-    deriving (Show)
-
-instance Wire.ToWire (CookieExtension a) where
-    put (CookieExtension c) = Wire.put c
-
-instance Wire.FromWire (CookieExtension Handshake.ClientHello) where
-    get = CookieExtension <$> Wire.get
-
-instance Wire.FromWire (CookieExtension Handshake.HelloRetryRequest) where
-    get = CookieExtension <$> Wire.get
-
-instance Typeable a => Wire.FromWire (CookieExtension a) where
-    get = invalidExtensionFor "Signature Cookie" (typeRep @a)
+parseExtensions :: Handshake.HandshakeType -> Serial.Get Extensions
+parseExtensions ht = do
+    len <- fromIntegral <$> Serial.getWord16be
+    Extensions . V.fromList <$> Serial.isolate len (parseExtensions [])
+  where
+      parseExtensions :: [Extension] -> Serial.Get [Extension]
+      parseExtensions acc = do
+          r <- Serial.remaining
+          if r == 0
+             then pure $! reverse acc
+             else do
+                 !ext <- parseExtension ht
+                 parseExtensions (ext : acc)
 
 
 
-data Extension (a :: Handshake.HandshakeType)
-    = ServerNameIndication (ServerName a)
+data Extension
+    = ServerNameIndication ServerName
     -- -- | MaxFragmentLength
     -- -- | StatusRequest RFC 6066
-    | SupportedGroups (SupportedGroupsExtension a)
-    | SignatureAlgs (SignatureAlgorithms a)
+    | SupportedGroups SupportedGroupsExtension
+    | SignatureAlgs SignatureAlgorithms
     -- -- | UseSRTP
     -- -- | Heartbeat
     -- -- | ALPN
@@ -146,21 +95,21 @@ data Extension (a :: Handshake.HandshakeType)
     -- -- | ServerCertType
     -- -- | Padding
     -- -- | PSK PSKExtension -- TODO lots of psk stuff (B.3.1)
-    | SupportedVersions (SupportedVersionsExtension a)
-    | Cookie (CookieExtension a)
+    | SupportedVersions SupportedVersionsExtension
+    | Cookie CookieExtension
     -- -- | PSKKeyExchangeModes TODO (4.2.9)
     -- -- | CertificateAuthorities TODO certificates
     -- -- | OIDFilters TODO certificates
     -- -- | PostHandshakeAuth
-    | SignatureAlgsCert (SignatureAlgorithms a) -- (4.2.4)
-    | KeyShare (KeyShareExtension a)
+    | SignatureAlgsCert SignatureAlgorithms -- (4.2.4)
+    | KeyShare KeyShareExtension
     -- -- | KeyShareClientHello [KeyShare]
     -- -- | KeyShareHelloRetryRequest Group
     -- -- | Custom -- TODO custom extension with a type parameter ?
     | Unknown
     deriving (Show)
 
-instance Wire.ToWire (Extension a) where
+instance Wire.ToWire Extension where
     put (ServerNameIndication name) = do
         Wire.put ETServerNameIndication
         let bytes = Serial.runPut $ Wire.put name
@@ -194,19 +143,28 @@ instance Wire.ToWire (Extension a) where
     put Unknown = fail "Cannot serialize unknown extension"
 
 
-instance Typeable a => Wire.FromWire (Extension a) where
-    get = do
-        extType <- Wire.get
-        extLength <- fromIntegral <$> Serial.getWord16be
-        Serial.isolate extLength $ case extType of
-            ETServerNameIndication -> ServerNameIndication <$> Wire.get
-            ETSupportedGroups      -> SupportedGroups <$> Wire.get
-            ETSignatureAlgs        -> SignatureAlgs <$> Wire.get
-            ETSupportedVersions    -> SupportedVersions <$> Wire.get
-            ETSignatureCookie      -> Cookie <$> Wire.get
-            ETSignatureAlgsCert    -> SignatureAlgsCert <$> Wire.get
-            ETKeyShare             -> KeyShare <$> Wire.get
-            ETUnknown _            -> Serial.skip extLength $> Unknown
+parseExtension :: Handshake.HandshakeType -> Serial.Get Extension
+parseExtension ht = do
+    extType <- Wire.get
+    extLength <- fromIntegral <$> Serial.getWord16be
+    Serial.isolate extLength $ parseExtensionForType extType ht
+
+
+newtype SupportedGroupsExtension
+    = SupportedGroupsExtension (V.Vector Group)
+    deriving (Show)
+
+instance Wire.ToWire SupportedGroupsExtension where
+    put (SupportedGroupsExtension groups) = do
+        let len = V.length groups
+        Serial.putWord16be (fromIntegral $ len * 2 + 2)
+        Serial.putWord16be (fromIntegral $ len * 2)
+        mapM_ Wire.put groups
+
+parseSupportedGroupsExtension :: Serial.Get SupportedGroupsExtension
+parseSupportedGroupsExtension = SupportedGroupsExtension <$> Wire.parseArray 2
+
+
 
 
 putSignatureAlgorithms :: V.Vector SignatureAlgorithm -> Serial.Put
@@ -217,9 +175,9 @@ putSignatureAlgorithms algs = do
     mapM_ Wire.put algs
 
 -- See RFC 6066 for definition and RFC 5890 for hostname comparison
-newtype ServerName (a :: Handshake.HandshakeType) = ServerName B.ByteString deriving (Show)
+newtype ServerName = ServerName B.ByteString deriving (Show)
 
-instance Wire.ToWire (ServerName a) where
+instance Wire.ToWire ServerName where
     put (ServerName hostname) = do
         let bytes = Serial.runPut $ do
                 Serial.putWord8 0 -- type: host_name
@@ -228,130 +186,19 @@ instance Wire.ToWire (ServerName a) where
         Serial.putWord16be $ fromIntegral (B.length bytes)
         Serial.putByteString bytes
 
+parseSNI :: Handshake.HandshakeType -> Serial.Get ServerName
+parseSNI Handshake.ClientHello = parseSNIValid
+parseSNI Handshake.EncryptedExtensions = parseSNIValid
+parseSNI t = invalidExtensionFor "Server Name Indication" t
 
-instance Wire.FromWire (ServerName Handshake.ClientHello) where
-    get = parseSNI
-
-instance Wire.FromWire (ServerName Handshake.EncryptedExtensions) where
-    get = parseSNI
-
-instance Typeable a => Wire.FromWire (ServerName a) where
-    get = invalidExtensionFor "Server Name Indication" (typeRep @a)
-
-parseSNI :: Serial.Get (ServerName a)
-parseSNI = do
+parseSNIValid :: Serial.Get ServerName
+parseSNIValid = do
     skipExtensionLength
     nameType <- Serial.getWord8
     when (nameType /= 0) $ fail ("Unsupported name type: " <> show nameType)
     nameLen <- fromIntegral <$> Serial.getWord16be
-    name <- Serial.getByteString nameLen
-    pure $ ServerName name
+    ServerName <$> Serial.getByteString nameLen
 
-
--- parseExtensionForType
---     :: Int
---     -> ExtensionType
---     -> Handshake.HandshakeType
---     -> Serial.Get Extension
---
--- parseExtensionForType _ ETServerNameIndication = parseSNI
--- parseExtensionForType _ ETSupportedGroups      = parseSupportedGroups
--- parseExtensionForType _ ETSignatureAlgs        = parseSignatureAlgs
--- parseExtensionForType _ ETSupportedVersions    = parseSupportedVersions
--- parseExtensionForType _ ETSignatureCookie      = parseSignatureCookie
--- parseExtensionForType _ ETSignatureAlgsCert    = parseSignatureAlgsCert
--- parseExtensionForType _ ETKeyShare             = parseKeyShare
--- parseExtensionForType l (ETUnknown _)          = const $ Serial.skip l $> Unknown
---
---
--- parseSNI :: Handshake.HandshakeType -> Serial.Get Extension
--- parseSNI Handshake.ClientHello = parseSNIValid
--- parseSNI Handshake.EncryptedExtensions = parseSNIValid
--- parseSNI ht = fail $ "Server name extension cannot be sent in " <> show ht
---
--- parseSNIValid :: Serial.Get Extension
--- parseSNIValid = do
---     Serial.skip 2
---     nameType <- Serial.getWord8
---     when (nameType /= 0) $ fail ("Unsupported name type: " <> show nameType)
---     nameLen <- fromIntegral <$> Serial.getWord16be
---     name <- Serial.getByteString nameLen
---     pure $ ServerNameIndication (ServerName name)
---
---
--- parseSupportedGroups :: Handshake.HandshakeType -> Serial.Get Extension
--- parseSupportedGroups Handshake.ClientHello = parseSupportedGroupsValid
--- parseSupportedGroups Handshake.EncryptedExtensions = parseSupportedGroupsValid
--- parseSupportedGroups ht = fail $ "Server name extension cannot be sent in " <> show ht
---
--- parseSupportedGroupsValid :: Serial.Get Extension
--- parseSupportedGroupsValid = SupportedGroups <$> parseArray 2
---
---
--- parseSignatureAlgs :: Handshake.HandshakeType -> Serial.Get Extension
--- parseSignatureAlgs Handshake.ClientHello        = parseSignatureAlgsValid
--- parseSignatureAlgs Handshake.CertificateRequest = parseSignatureAlgsValid
--- parseSignatureAlgs ht                           = invalidExtensionFor "Signature Algorithms" ht
---
--- parseSignatureAlgsValid :: Serial.Get Extension
--- parseSignatureAlgsValid = SignatureAlgs <$> parseArray 2
---
---
--- parseSignatureAlgsCert :: Handshake.HandshakeType -> Serial.Get Extension
--- parseSignatureAlgsCert Handshake.ClientHello        = parseSignatureAlgsCertValid
--- parseSignatureAlgsCert Handshake.CertificateRequest = parseSignatureAlgsCertValid
--- parseSignatureAlgsCert ht                           = invalidExtensionFor "Signature Algorithms" ht
---
--- parseSignatureAlgsCertValid :: Serial.Get Extension
--- parseSignatureAlgsCertValid = SignatureAlgsCert <$> parseArray 2
---
---
--- parseSupportedVersions :: Handshake.HandshakeType -> Serial.Get Extension
--- parseSupportedVersions Handshake.ClientHello       = parseSupportedVersionsClient
--- parseSupportedVersions Handshake.ServerHello       = parseSupportedVersionsServer
--- parseSupportedVersions Handshake.HelloRetryRequest = parseSupportedVersionsServer
--- parseSupportedVersions ht                          = invalidExtensionFor "Supported versions" ht
---
--- parseSupportedVersionsClient :: Serial.Get Extension
--- parseSupportedVersionsClient = SupportedVersions . SupportedVersionsClient <$> parseArray 2
---
--- parseSupportedVersionsServer :: Serial.Get Extension
--- parseSupportedVersionsServer = SupportedVersions . SupportedVersionsServer <$> Wire.get
---
---
--- parseSignatureCookie :: Handshake.HandshakeType -> Serial.Get Extension
--- parseSignatureCookie Handshake.ClientHello       = parseSignatureCookieValid
--- parseSignatureCookie Handshake.HelloRetryRequest = parseSignatureCookieValid
--- parseSignatureCookie ht                          = invalidExtensionFor "Signature cookie" ht
---
--- parseSignatureCookieValid :: Serial.Get Extension
--- parseSignatureCookieValid = Cookie <$> Wire.get
---
---
--- parseKeyShare :: Handshake.HandshakeType -> Serial.Get Extension
--- parseKeyShare Handshake.ClientHello       = do
---     len <- fromIntegral <$> Serial.getWord16be
---     Serial.isolate len $ KeyShare . KeyShareChlo . V.fromList <$> parseKeySharesForLength len
---   where
---       parseKeySharesForLength :: Int -> Serial.Get [KeyShareEntry]
---       parseKeySharesForLength l
---         | l > 0 = do
---                     keyShare <- Wire.get
---                     (:) <$> pure keyShare <*> parseKeySharesForLength (l - keyShareEntryLength keyShare)
---         | otherwise = pure []
--- parseKeyShare Handshake.ServerHello       = KeyShare . KeyShareShlo <$> Wire.get
--- parseKeyShare Handshake.HelloRetryRequest = KeyShare . KeyShareHelloRetryRequest <$> Wire.get
--- parseKeyShare ht                          = invalidExtensionFor "Key share" ht
---
---
--- invalidExtensionFor :: String -> Handshake.HandshakeType -> Serial.Get Extension
--- invalidExtensionFor extName ht = fail $ extName <> " extension cannot be sent in " <> show ht
---
-
-parseArray :: Wire.FromWire a => Int -> Serial.Get (V.Vector a)
-parseArray elemSize = do
-    len <- fromIntegral <$> Serial.getWord16be
-    V.replicateM (len `div` elemSize) Wire.get
 
 
 data SignatureAlgorithm
@@ -412,32 +259,31 @@ instance Wire.FromWire SignatureAlgorithm where
         0x0203 -> pure EcdsaSha1
         code   -> fail $ "Unknown algorithm code " <> show code
 
-newtype SignatureAlgorithms (a :: Handshake.HandshakeType)
+newtype SignatureAlgorithms
     = SignatureAlgorithms (V.Vector SignatureAlgorithm)
     deriving (Show)
 
-instance Wire.ToWire (SignatureAlgorithms a) where
+instance Wire.ToWire SignatureAlgorithms where
     put (SignatureAlgorithms algs) = putSignatureAlgorithms algs
 
-instance Wire.FromWire (SignatureAlgorithms Handshake.ClientHello) where
-    get = parseSignatureAlgorithms
+parseSignatureAlgs
+    :: Handshake.HandshakeType
+    -> Serial.Get SignatureAlgorithms
+parseSignatureAlgs Handshake.ClientHello        = parseSignatureAlgsValid
+parseSignatureAlgs Handshake.CertificateRequest = parseSignatureAlgsValid
+parseSignatureAlgs t                            = invalidExtensionFor "Signature Algorithm" t
 
-instance Wire.FromWire (SignatureAlgorithms Handshake.CertificateRequest) where
-    get = parseSignatureAlgorithms
-
-instance Typeable a => Wire.FromWire (SignatureAlgorithms a) where
-    get = invalidExtensionFor "Signature Algorithms" (typeRep @a)
-
-parseSignatureAlgorithms :: Serial.Get (SignatureAlgorithms a)
-parseSignatureAlgorithms = SignatureAlgorithms <$> parseArray 2
+parseSignatureAlgsValid :: Serial.Get SignatureAlgorithms
+parseSignatureAlgsValid = SignatureAlgorithms <$> Wire.parseArray 2
 
 
-data SupportedVersionsExtension (a :: Handshake.HandshakeType)
+
+data SupportedVersionsExtension
     = SupportedVersionsClient (V.Vector Version)
     | SupportedVersionsServer Version
     deriving (Show)
 
-instance Wire.ToWire (SupportedVersionsExtension a) where
+instance Wire.ToWire SupportedVersionsExtension where
     put (SupportedVersionsClient vs) = do
           let versionBytes = Serial.runPut (mapM_ Wire.put vs)
           Serial.putWord16be $ fromIntegral $ B.length versionBytes + 1
@@ -447,17 +293,15 @@ instance Wire.ToWire (SupportedVersionsExtension a) where
           Serial.putWord8 2
           Wire.put v
 
-instance Wire.FromWire (SupportedVersionsExtension Handshake.ClientHello) where
-    get = SupportedVersionsClient <$> parseArray 2
+parseSupportedVersions
+    :: Handshake.HandshakeType
+    -> Serial.Get SupportedVersionsExtension
+parseSupportedVersions Handshake.ClientHello       = SupportedVersionsClient <$> Wire.parseArray 2
+parseSupportedVersions Handshake.ServerHello       = SupportedVersionsServer <$> Wire.get
+parseSupportedVersions Handshake.HelloRetryRequest = SupportedVersionsServer <$> Wire.get
+parseSupportedVersions t                           = invalidExtensionFor "Supported Versions" t
 
-instance Wire.FromWire (SupportedVersionsExtension Handshake.ServerHello) where
-    get = SupportedVersionsServer <$> Wire.get
 
-instance Wire.FromWire (SupportedVersionsExtension Handshake.HelloRetryRequest) where
-    get = SupportedVersionsServer <$> Wire.get
-
-instance Typeable a => Wire.FromWire (SupportedVersionsExtension a) where
-    get = invalidExtensionFor "Supported Versions" (typeRep @a)
 
 -- should only be used for key_share extension once the handshake
 -- is completed
@@ -507,42 +351,6 @@ instance Wire.FromWire Group where
             260 -> pure Ffdhe8192
             _ -> fail $ "Unknown group type: " <> show typ
 
-data KeyShareExtension (a :: Handshake.HandshakeType)
-    = KeyShareChlo (V.Vector KeyShareEntry)
-    | KeyShareHelloRetryRequest Group
-    | KeyShareShlo KeyShareEntry
-    deriving (Show)
-
-instance Wire.ToWire (KeyShareExtension a) where
-    put (KeyShareChlo keys) = do
-        let keyShareBytes = Serial.runPut (mapM_ Wire.put keys)
-        Serial.putWord16be (fromIntegral $ B.length keyShareBytes)
-        Serial.putByteString keyShareBytes
-    put (KeyShareHelloRetryRequest group) = Wire.put group
-    put (KeyShareShlo keyShare) = Wire.put keyShare
-
-
-instance Wire.FromWire (KeyShareExtension Handshake.ClientHello) where
-    get = do
-        len <- fromIntegral <$> Serial.getWord16be
-        kses <- Serial.isolate len $ parse len []
-        pure (KeyShareChlo $ V.fromList kses)
-      where
-        parse :: Int -> [KeyShareEntry] -> Serial.Get [KeyShareEntry]
-        parse l acc | l <= 0 = pure (reverse acc)
-                    | otherwise = do
-                        group <- Wire.get
-                        ks <- Wire.get
-                        parse (l - Wire.opaque16Length ks) (KeyShareEntry (group, ks) : acc)
-
-instance Wire.FromWire (KeyShareExtension Handshake.HelloRetryRequest) where
-    get = KeyShareHelloRetryRequest <$> Wire.get
-
-instance Wire.FromWire (KeyShareExtension Handshake.ServerHello) where
-    get = KeyShareShlo <$> Wire.get
-
-instance Typeable a => Wire.FromWire (KeyShareExtension a) where
-    get = fail $ "KeyShare extension cannot be present in this packet type " <> show (typeRep @a)
 
 
 -- TODO the opaque value depends on the value of the Group
@@ -563,12 +371,76 @@ skipExtensionLength = Serial.skip 2
 
 invalidExtensionFor extName typ = fail $ extName <> " extension cannot be sent in " <> show typ
 
--- keyShareEntryLength :: KeyShareEntry -> Int
--- keyShareEntryLength (KeyShareEntry (group, key)) = 2 + opaque16Len key
+
+parseExtensionForType
+    :: ExtensionType
+    -> Handshake.HandshakeType
+    -> Serial.Get Extension
+parseExtensionForType ETServerNameIndication = fmap ServerNameIndication . parseSNI
+parseExtensionForType ETSupportedGroups = fmap SupportedGroups . parseSupportedGroups
+parseExtensionForType ETSignatureAlgs = fmap SignatureAlgs . parseSignatureAlgs
+parseExtensionForType ETSupportedVersions = fmap SupportedVersions . parseSupportedVersions
+parseExtensionForType ETSignatureCookie = fmap Cookie . parseCookie
+parseExtensionForType ETSignatureAlgsCert = const (fail "signature algs cert not implemented")
+parseExtensionForType ETKeyShare = fmap KeyShare . parseKeyShare
+parseExtensionForType (ETUnknown _) = undefined
 
 
--- fromWireForPacket :: Handshake.HandshakeType -> Serial.Get Extension
--- fromWireForPacket ht = do
---     extType <- Wire.get
---     len <- fromIntegral <$> Serial.getWord16be
---     Serial.isolate len (parseExtensionForType len extType ht)
+parseSupportedGroups
+    :: Handshake.HandshakeType
+    -> Serial.Get SupportedGroupsExtension
+parseSupportedGroups Handshake.ClientHello         = parseSupportedGroupsValid
+parseSupportedGroups Handshake.EncryptedExtensions = parseSupportedGroupsValid
+parseSupportedGroups t                             = invalidExtensionFor "Supported Groups" t
+
+parseSupportedGroupsValid :: Serial.Get SupportedGroupsExtension
+parseSupportedGroupsValid = SupportedGroupsExtension <$> Wire.parseArray 2
+
+
+newtype CookieExtension
+    = CookieExtension Wire.Opaque16
+    deriving (Show)
+
+instance Wire.ToWire CookieExtension where
+    put (CookieExtension c) = Wire.put c
+
+parseCookie
+    :: Handshake.HandshakeType
+    -> Serial.Get CookieExtension
+parseCookie Handshake.ClientHello       = CookieExtension <$> Wire.get
+parseCookie Handshake.HelloRetryRequest = CookieExtension <$> Wire.get
+parseCookie t                           = invalidExtensionFor "Cookie" t
+
+
+data KeyShareExtension
+    = KeyShareChlo (V.Vector KeyShareEntry)
+    | KeyShareHelloRetryRequest Group
+    | KeyShareShlo KeyShareEntry
+    deriving (Show)
+
+instance Wire.ToWire KeyShareExtension where
+    put (KeyShareChlo keys) = do
+        let keyShareBytes = Serial.runPut (mapM_ Wire.put keys)
+        Serial.putWord16be (fromIntegral $ B.length keyShareBytes)
+        Serial.putByteString keyShareBytes
+    put (KeyShareHelloRetryRequest group) = Wire.put group
+    put (KeyShareShlo keyShare) = Wire.put keyShare
+
+parseKeyShare
+    :: Handshake.HandshakeType
+    -> Serial.Get KeyShareExtension
+parseKeyShare Handshake.ClientHello = do
+        len <- fromIntegral <$> Serial.getWord16be
+        kses <- Serial.isolate len $ parse len []
+        pure (KeyShareChlo $ V.fromList kses)
+      where
+        parse :: Int -> [KeyShareEntry] -> Serial.Get [KeyShareEntry]
+        parse l acc | l <= 0 = pure (reverse acc)
+                    | otherwise = do
+                        group <- Wire.get
+                        ks <- Wire.get
+                        parse (l - Wire.opaque16Length ks) (KeyShareEntry (group, ks) : acc)
+
+parseKeyShare Handshake.ServerHello = KeyShareShlo <$> Wire.get
+parseKeyShare Handshake.HelloRetryRequest = KeyShareHelloRetryRequest <$> Wire.get
+parseKeyShare t = invalidExtensionFor "Key Share" t

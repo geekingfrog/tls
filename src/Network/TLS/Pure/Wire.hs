@@ -63,3 +63,8 @@ getWord24be = do
     a <- fromIntegral <$> Get.getWord8
     b <- fromIntegral <$> Get.getWord16be
     pure $ a `shiftL` 16 + b
+
+parseArray :: FromWire a => Int -> Serial.Get (V.Vector a)
+parseArray elemSize = do
+    len <- fromIntegral <$> Serial.getWord16be
+    V.replicateM (len `div` elemSize) get
