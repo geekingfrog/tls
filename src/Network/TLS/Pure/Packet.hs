@@ -1,11 +1,14 @@
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE BangPatterns #-}
 
 module Network.TLS.Pure.Packet where
 
 import Debug.Trace as D
 
+import Data.Functor
+import Data.Foldable
 import Control.Monad
 
 import qualified Numeric                    as N
@@ -14,6 +17,7 @@ import qualified Util
 
 import qualified Data.Bits                          as Bits
 import qualified Data.ByteString                    as B
+import qualified Data.Vector                        as V
 import qualified Data.Serialize                     as Serial
 import qualified Network.TLS.Pure.Wire              as Wire
 
@@ -24,57 +28,104 @@ import qualified Network.TLS.Pure.Version           as Version
 
 
 newtype TLSPacket
-    = Handshake HandshakePacket
-    deriving (Show)
-
-instance Wire.ToWire TLSPacketType where
-    put TLSPacketTypeHandshake = Serial.putWord8 22
-
-instance Wire.FromWire TLSPacketType where
-    get = Serial.getWord8 >>= \case
-        22 -> pure TLSPacketTypeHandshake
-        c  -> fail $ "Unknown tls packet code: " <> show c
-
-
-data TLSPacketType
-    = TLSPacketTypeHandshake
+    = TLSPacket (V.Vector TLSRecord)
     deriving (Show)
 
 instance Wire.ToWire TLSPacket where
-    put (Handshake p) = do
-        Wire.put TLSPacketTypeHandshake
-        Wire.put Version.TLS10
-        let packetBytes = Serial.runPut (Wire.put p)
-        Wire.putOpaque16 packetBytes
+    put (TLSPacket records) = traverse_ Wire.put records
 
 instance Wire.FromWire TLSPacket where
-    get = do
-        pktType <- Wire.get
-        (version :: Version.Version) <- Wire.get
-        -- TODO check the version there (not always TLS10)
-        -- when (version /= Version.TLS10) $
-        --     fail ("Legacy version must be TLS10 but got " <> show version)
-        pktLength <- fromIntegral <$> Serial.getWord16be
-        case pktType of
-            TLSPacketTypeHandshake -> Handshake <$> Wire.get
+    get = TLSPacket . V.fromList <$> parsePacket []
+      where
+        parsePacket (!acc) = do
+            r <- Serial.remaining
+            if r == 0
+                then pure (reverse acc)
+                else do
+                    !record <- Wire.get
+                    parsePacket (record : acc)
 
 
-data HandshakePacket
-    = ClientHello ClientHelloData
-    | ServerHello ServerHelloData
+data TLSRecordType
+    = TLSRecordTypeChangeCipherSpec
+    | TLSRecordTypeAlert
+    | TLSRecordTypeHandshake
+    | TLSRecordTypeApplicationData
     deriving (Show)
 
-instance Wire.ToWire HandshakePacket where
-    put (ClientHello chloData) = do
-        let dataBytes = Serial.runPut (Wire.put Version.TLS12 *> Wire.put chloData)
+instance Wire.ToWire TLSRecordType where
+    put TLSRecordTypeChangeCipherSpec = Serial.putWord8 20
+    put TLSRecordTypeAlert            = Serial.putWord8 21
+    put TLSRecordTypeHandshake        = Serial.putWord8 22
+    put TLSRecordTypeApplicationData  = Serial.putWord8 23
+
+instance Wire.FromWire TLSRecordType where
+    get = Serial.getWord8 >>= \case
+        20 -> pure TLSRecordTypeChangeCipherSpec
+        21 -> pure TLSRecordTypeAlert
+        22 -> pure TLSRecordTypeHandshake
+        23 -> pure TLSRecordTypeApplicationData
+        c  -> fail $ "Unknown tls packet code: " <> show c
+
+
+data TLSRecord
+    = HandshakeRecord !Handshake
+    | EncryptedRecord !TLSRecordType !B.ByteString
+
+instance Show TLSRecord where
+    show (HandshakeRecord h)
+        = "HandshakeRecord " <> show h
+    show (EncryptedRecord typ bytes)
+        = "EncryptedRecord "
+        <> show typ
+        <> " ("
+        <> show (B.length bytes)
+        <> " bytes)"
+
+
+instance Wire.ToWire TLSRecord where
+    put (HandshakeRecord h) = do
+        Wire.put TLSRecordTypeHandshake
+        putLegacyVersion
+        let bytes = Serial.runPut (Wire.put h)
+        Wire.putOpaque16 bytes
+
+    put (EncryptedRecord typ bytes) = do
+        Wire.put typ
+        putLegacyVersion
+        Wire.putOpaque16 bytes
+
+
+instance Wire.FromWire TLSRecord where
+    get = do
+        recordType <- Wire.get
+        (_legacyVersion :: Version.Version) <- Wire.get
+        recordLength <- fromIntegral <$> Serial.getWord16be
+        case recordType of
+            TLSRecordTypeHandshake -> HandshakeRecord <$> Serial.isolate recordLength Wire.get
+            _ -> EncryptedRecord recordType <$> Serial.getByteString recordLength
+
+putLegacyVersion :: Serial.Put
+putLegacyVersion = Wire.put Version.TLS12
+
+
+data Handshake
+    = ClientHello !ClientHelloData
+    | ServerHello !ServerHelloData
+    deriving (Show)
+
+instance Wire.ToWire Handshake where
+    put handshake = do
+        let dataBytes = Serial.runPut (Wire.put Version.TLS12 *> putHandshakeBytes handshake)
         Wire.put Handshake.ClientHello
         Wire.putWord24 (B.length dataBytes)
         Serial.putByteString dataBytes
 
-    put (ServerHello shloData) = error "put ServerHello not implemented"
+putHandshakeBytes :: Handshake -> Serial.Put
+putHandshakeBytes (ClientHello c) = Wire.put c
+putHandshakeBytes (ServerHello s) = Wire.put s
 
-
-instance Wire.FromWire HandshakePacket where
+instance Wire.FromWire Handshake where
     get = do
         handshakeType <- Wire.get
         len <- fromIntegral <$> Wire.getWord24be
@@ -84,7 +135,7 @@ instance Wire.FromWire HandshakePacket where
         case handshakeType of
             Handshake.ClientHello -> ClientHello <$> Wire.get
             Handshake.ServerHello -> ServerHello <$> Wire.get
-            _ -> error "wip FromWire HandshakePacket"
+            _ -> error "wip FromWire Handshake"
 
 
 data ClientHelloData
@@ -98,8 +149,6 @@ data ClientHelloData
 
 
 instance Wire.ToWire ClientHelloData where
-    -- TODO instead of hardcoding a bunch of things there, do the actual thing
-    -- regarding versions and co
     put chlod = do
         Serial.putByteString (chlodRandom chlod) -- Random
 
@@ -134,6 +183,14 @@ data ServerHelloData = ServerHelloData
     , shlodExtensions :: !Ext.Extensions
     }
     deriving Show
+
+instance Wire.ToWire ServerHelloData where
+    put shlod = do
+        -- TODO generic to the rescue ?
+        Serial.putByteString (shlodRandom shlod)
+        Wire.put (shlodSessionId shlod)
+        Wire.put (shlodCipher shlod)
+        Wire.put (shlodExtensions shlod)
 
 instance Wire.FromWire ServerHelloData where
     get = do

@@ -10,10 +10,7 @@ import Data.Char
 import qualified Data.ByteString as B
 
 bsToHex :: B.ByteString -> String
-bsToHex bs
-    = let
-        bytes = B.unpack bs
-    in concatMap (printf "%02x ") bytes
+bsToHex bs = unwords $ map (printf "%02x") (B.unpack bs)
 
 hexToBs :: [Word8] -> B.ByteString
 hexToBs = B.pack

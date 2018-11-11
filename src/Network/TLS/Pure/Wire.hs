@@ -3,7 +3,10 @@
 module Network.TLS.Pure.Wire where
 
 import GHC.Word
+import Text.Printf
 import Data.Bits (shiftR, shiftL, (.&.))
+import Data.Foldable
+import qualified Numeric                       as N
 import qualified Data.Serialize.Put            as Put
 import qualified Data.Serialize.Get            as Get
 import qualified Data.ByteString               as B
@@ -17,7 +20,10 @@ class ToWire a where
 class FromWire a where
     get :: Serial.Get a
 
-newtype Opaque8 = Opaque8 B.ByteString deriving (Show)
+newtype Opaque8 = Opaque8 { getOpaque8 :: B.ByteString }
+
+instance Show Opaque8 where
+    show (Opaque8 o) = "Opaque8 " <> bsToHex o
 
 instance ToWire Opaque8 where
     put (Opaque8 o)
@@ -28,7 +34,10 @@ instance FromWire Opaque8 where
         len <- fromIntegral <$> Serial.getWord8
         Opaque8 <$> Serial.getByteString len
 
-newtype Opaque16 = Opaque16 B.ByteString deriving (Show)
+newtype Opaque16 = Opaque16 { getOpaque16 :: B.ByteString }
+
+instance Show Opaque16 where
+    show (Opaque16 o) = "Opaque16 " <> bsToHex o
 
 instance ToWire Opaque16 where
     put (Opaque16 o)
@@ -68,3 +77,7 @@ parseArray :: FromWire a => Int -> Serial.Get (V.Vector a)
 parseArray elemSize = do
     len <- fromIntegral <$> Serial.getWord16be
     V.replicateM (len `div` elemSize) get
+
+
+bsToHex :: B.ByteString -> String
+bsToHex bs = unwords $ map (printf "%02x") (B.unpack bs)

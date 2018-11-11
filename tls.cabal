@@ -18,17 +18,20 @@ executable tls
   main-is:             Main.hs
   default-language:    Haskell2010
   build-depends:       base >= 4.7 && < 5
-                     , ghc-prim
-                     , attoparsec
                      , cereal
                      , text
                      , bytestring
                      , vector
                      , cryptonite
+                     , memory
+                     , mtl
+                     , errors
 
                      -- temp dependencies for testing
                      , network-simple
                      , split
+
+                     , ghc-prim
 
   ghc-options:         -fwarn-incomplete-patterns -Werror
 
@@ -37,6 +40,8 @@ executable tls
                      , Network.TLS.Pure.Packet
                      , Network.TLS.Pure.Packet.Handshake
                      , Network.TLS.Pure.Handshake.Header
+                     , Network.TLS.Pure.State
+                     , Network.TLS.Pure.Transitions
                      , Network.TLS.Pure.Wire
                      , Network.TLS.Pure.Cipher
                      , Network.TLS.Pure.Cipher.Serialize

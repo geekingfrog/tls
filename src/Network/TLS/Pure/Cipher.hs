@@ -53,3 +53,10 @@ tls13Ciphers = CipherSuites $ V.fromList
     , AES128_CCM
     -- , AES128_CCM_8
     ]
+
+newtype IvLength = IvLength { getIvLength :: Int } deriving (Show)
+newtype KeyLength = KeyLength { getKeyLength :: Int } deriving (Show)
+
+cipherParams :: Cipher -> (IvLength, KeyLength)
+cipherParams AES128_GCM = (IvLength 12, KeyLength 16) -- RFC-4106
+cipherParams _ = error "wip cipherParams Cipher"

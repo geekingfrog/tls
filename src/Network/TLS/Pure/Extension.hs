@@ -7,6 +7,7 @@ module Network.TLS.Pure.Extension where
 
 import           Control.Monad
 import           Data.Functor
+import           Data.Coerce
 
 import qualified Data.ByteString               as B
 import qualified Data.Serialize.Put            as Serial
@@ -321,7 +322,7 @@ data Group
     -- Reserved Code Points
     -- | FfdhePrivateUse
     -- | EcdhePrivateUse
-    deriving (Show)
+    deriving (Show, Eq)
 
 instance Wire.ToWire Group where
     put Secp256r1 = Serial.putWord16be 23
@@ -352,18 +353,6 @@ instance Wire.FromWire Group where
             _ -> fail $ "Unknown group type: " <> show typ
 
 
-
--- TODO the opaque value depends on the value of the Group
-newtype KeyShareEntry = KeyShareEntry (Group, Wire.Opaque16) deriving (Show)
-
-instance Wire.ToWire KeyShareEntry where
-    put kse@(KeyShareEntry (group, key)) = do
-        let bytes = Serial.runPut (Wire.put group *> Wire.put key)
-        Serial.putWord16be (fromIntegral $ B.length bytes)
-        Serial.putByteString bytes
-
-instance Wire.FromWire KeyShareEntry where
-    get = KeyShareEntry <$> Serial.getTwoOf Wire.get Wire.get
 
 
 skipExtensionLength :: Serial.Get ()
@@ -412,6 +401,8 @@ parseCookie Handshake.HelloRetryRequest = CookieExtension <$> Wire.get
 parseCookie t                           = invalidExtensionFor "Cookie" t
 
 
+-- TODO would be nice to be able to statically know which extension is
+-- there from the record type
 data KeyShareExtension
     = KeyShareChlo (V.Vector KeyShareEntry)
     | KeyShareHelloRetryRequest Group
@@ -439,8 +430,42 @@ parseKeyShare Handshake.ClientHello = do
                     | otherwise = do
                         group <- Wire.get
                         ks <- Wire.get
-                        parse (l - Wire.opaque16Length ks) (KeyShareEntry (group, ks) : acc)
+                        let kse = KeyShareEntry group Nothing ks
+                        parse (l - Wire.opaque16Length ks) (kse : acc)
 
 parseKeyShare Handshake.ServerHello = KeyShareShlo <$> Wire.get
 parseKeyShare Handshake.HelloRetryRequest = KeyShareHelloRetryRequest <$> Wire.get
 parseKeyShare t = invalidExtensionFor "Key Share" t
+
+
+-- newtype KeyShareEntry = KeyShareEntry (Group, Wire.Opaque16) deriving (Show)
+-- TODO typeclass to get associatedType there? Or at least different type for public and private
+data KeyShareEntry = KeyShareEntry
+    { kseGroup :: Group
+    , ksePrivate :: Maybe Wire.Opaque16
+    , ksePublic :: Wire.Opaque16
+    }
+    deriving (Show)
+
+instance Wire.ToWire KeyShareEntry where
+    put kse = do
+        let bytes = Serial.runPut (Wire.put (kseGroup kse) *> Wire.put (ksePublic kse))
+        Serial.putWord16be (fromIntegral $ B.length bytes)
+        Serial.putByteString bytes
+
+instance Wire.FromWire KeyShareEntry where
+    get = do
+        !group <- Wire.get
+        !publicKey <- Wire.get
+        let expectedLength = case group of
+                X25519 -> Just 32
+                X448 -> Just 56
+                _ -> Nothing
+
+        let actualLength = B.length (coerce publicKey)
+        forM_ expectedLength $ \l -> when (actualLength /= l) $ fail
+            $ "Incorrect publicKey length for group " <> show group
+            <> " Expected " <> show l
+            <> " but got " <> show actualLength
+
+        pure $ KeyShareEntry group Nothing publicKey
