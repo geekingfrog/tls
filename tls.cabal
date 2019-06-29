@@ -35,17 +35,33 @@ executable tls
 
   ghc-options:         -fwarn-incomplete-patterns -Werror
 
-  other-modules:       Network.TLS.Pure.Extension
-                     , Network.TLS.Pure.Version
+  other-modules:       Network.TLS.Pure.Cipher
+                     , Network.TLS.Pure.Extension
+                     , Network.TLS.Pure.Extension.KeyShare
+                     , Network.TLS.Pure.Extension.ServerNameIndication
+                     , Network.TLS.Pure.Extension.SignatureAlgorithms
+                     , Network.TLS.Pure.Extension.SupportedGroups
+                     , Network.TLS.Pure.Extension.SupportedVersions
+                     , Network.TLS.Pure.Handshake
+                     , Network.TLS.Pure.Handshake.ClientHello
+                     , Network.TLS.Pure.Handshake.MessageType
                      , Network.TLS.Pure.Packet
-                     , Network.TLS.Pure.Packet.Handshake
-                     , Network.TLS.Pure.Handshake.Header
-                     , Network.TLS.Pure.State
-                     , Network.TLS.Pure.Transitions
-                     , Network.TLS.Pure.Wire
-                     , Network.TLS.Pure.Cipher
-                     , Network.TLS.Pure.Cipher.Serialize
-                     , Util
-                     , TestTypes
-                     -- , Network.TLS.Pure.
-                     -- , Network.TLS.Pure.Packet.Handshake
+                     , Network.TLS.Pure.Record
+                     , Network.TLS.Pure.Serialization
+                     , Network.TLS.Pure.Version
+                     , Network.TLS.Pure.Debug
+
+  -- other-modules:       Network.TLS.Pure.Extension
+  --                    , Network.TLS.Pure.Version
+  --                    , Network.TLS.Pure.Packet
+  --                    , Network.TLS.Pure.Packet.Handshake
+  --                    , Network.TLS.Pure.Handshake.Header
+  --                    , Network.TLS.Pure.State
+  --                    , Network.TLS.Pure.Transitions
+  --                    , Network.TLS.Pure.Wire
+  --                    , Network.TLS.Pure.Cipher
+  --                    , Network.TLS.Pure.Cipher.Serialize
+  --                    , Util
+  --                    , TestTypes
+  --                    -- , Network.TLS.Pure.
+  --                    -- , Network.TLS.Pure.Packet.Handshake
