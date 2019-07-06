@@ -3,21 +3,29 @@
 
 module Network.TLS.Pure.Handshake where
 
-import qualified Network.TLS.Pure.Serialization as Serialization
-import qualified Data.Serialize.Put as S
+import qualified Data.Serialize.Put as Put
 
-import Network.TLS.Pure.Handshake.ClientHello
+import qualified Network.TLS.Pure.Serialization as S
+import qualified Network.TLS.Pure.Handshake.ClientHello as CH
+import qualified Network.TLS.Pure.Handshake.ServerHello as SH
 import qualified Network.TLS.Pure.Handshake.MessageType as MT
 
 data Handshake
-  = ClientHello13 ClientHello13Data
-  | FooHandshake
+  = ClientHello13 CH.ClientHello13Data
+  | ServerHello13 SH.ServerHello13Data
 
-instance Serialization.ToWire Handshake where
+instance S.ToWire Handshake where
   encode = \case
-    ClientHello13 chloData-> do
-      Serialization.encode MT.ClientHello
-      let bytes = S.runPut (Serialization.encode chloData)
-      Serialization.encode (Serialization.Opaque24 bytes)
+    ClientHello13 chloData -> do
+      S.encode MT.ClientHello
+      let bytes = Put.runPut (S.encode chloData)
+      S.encode (S.Opaque24 bytes)
 
-    FooHandshake -> error "wip"
+    ServerHello13{} -> error "wip encode serverHello13"
+
+
+instance S.FromWire Handshake where
+  decode = S.decode >>= \case
+    MT.ClientHello -> error "wip decode handshake client hello"
+    MT.ServerHello -> S.getNested (fmap fromIntegral S.getWord24be) (ServerHello13 <$> S.decode)
+    MT.Unknown w -> fail $ "Unknown message type: " <> show w

@@ -1,18 +1,20 @@
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 
 module Main where
 
-import qualified Data.Serialize.Put as S
+import qualified Data.Serialize.Put as Put
 import qualified Data.Vector as V
 import qualified Data.ByteString as BS
 import qualified Crypto.Error as Crypto
 import qualified Crypto.PubKey.Curve25519 as C25519
 import qualified Network.Simple.TCP as TCP
 
-import qualified Network.TLS.Pure.Serialization as Serialization
+import qualified Network.TLS.Pure.Serialization as S
 import qualified Network.TLS.Pure.Cipher as Cipher
 import qualified Network.TLS.Pure.Extension as Extension
 import qualified Network.TLS.Pure.Version as Version
+import qualified Network.TLS.Pure.Handshake.Common as H.C
 import qualified Network.TLS.Pure.Handshake.ClientHello as Chlo
 import qualified Network.TLS.Pure.Extension.SupportedVersions as SV
 import qualified Network.TLS.Pure.Extension.SupportedGroups as SG
@@ -27,11 +29,11 @@ import qualified Network.TLS.Pure.Packet as Pkt
 import qualified Network.TLS.Pure.Debug as Dbg
 
 main :: IO ()
-main = sendChlo *> putStrLn "done"
+main = testHandshake *> putStrLn "done"
 
 
-sendChlo :: IO ()
-sendChlo = do
+testHandshake :: IO ()
+testHandshake = do
   chloData <- mkTestChlo
   let record = Record.TLSRecord
         { Record.rVersion = Version.TLS10
@@ -40,7 +42,12 @@ sendChlo = do
   let packet = Pkt.TLSPacket $ V.singleton record
   TCP.connect "localhost" "4433" $ \(socket, remoteAddr) -> do
     putStrLn $ "Connected to: " <> show remoteAddr
-    TCP.send socket (S.runPut $ Serialization.encode packet)
+    TCP.send socket (Put.runPut $ S.encode packet)
+    Just resp <- TCP.recv socket 16000
+    let shlo = S.runTLSParser S.decode resp
+    case shlo of
+      Left err -> print err
+      Right (_ :: Pkt.TLSPacket) -> putStrLn "got a shlo"
   pure ()
 
 
@@ -61,8 +68,8 @@ testChlo kse = Chlo.ClientHello13Data
       , Cipher.AES128_CCM
       , Cipher.AES128_CCM_8
       ]
-  , Chlo.chlo13dRandom = Chlo.Random (BS.replicate 32 0) -- TODO should be random
-  , Chlo.chlo13dLegacySessionId = Serialization.Opaque8 (BS.replicate 32 0) -- TODO should be random
+  , Chlo.chlo13dRandom = H.C.Random (BS.replicate 32 0) -- TODO should be random
+  , Chlo.chlo13dLegacySessionId = S.Opaque8 (BS.replicate 32 0) -- TODO should be random
   , Chlo.chlo13dExtensions = Extension.Extensions $ V.fromList
     [ Extension.ServerNameIndication (SNI.ServerName "localhost")
     , Extension.SupportedVersions (SV.SupportedVersionsCH $ V.singleton Version.TLS13)
@@ -100,6 +107,6 @@ testRepl = do
   let public = C25519.toPublic secret
   let kse = KS.KSE25519 public (Just secret)
 
-  let bytes = S.runPut $ Serialization.encode kse
+  let bytes = Put.runPut $ S.encode kse
   print $ BS.length bytes
-  putStrLn $ Dbg.bsToHex bytes
+  putStrLn $ Dbg.showHex bytes

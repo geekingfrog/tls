@@ -3,9 +3,11 @@
 
 module Network.TLS.Pure.Cipher where
 
-import qualified Network.TLS.Pure.Serialization as Serialization
-import qualified Data.Serialize.Put as S
 import qualified Data.Vector as V
+import qualified Data.Serialize.Put as Put
+
+import qualified Network.TLS.Pure.Serialization as S
+import qualified Network.TLS.Pure.Debug as Dbg
 
 data Cipher
   = AES128_GCM
@@ -16,18 +18,30 @@ data Cipher
   -- TODO add empty renegotiation info ?
   deriving (Show)
 
-instance Serialization.ToWire Cipher where
+instance S.ToWire Cipher where
   encode = \case
-    AES128_GCM    -> S.putWord16be 0x1301
-    AES256_GCM    -> S.putWord16be 0x1302
-    CHACHA20_POLY -> S.putWord16be 0x1303
-    AES128_CCM    -> S.putWord16be 0x1304
-    AES128_CCM_8  -> S.putWord16be 0x1305
+    AES128_GCM    -> Put.putWord16be 0x1301
+    AES256_GCM    -> Put.putWord16be 0x1302
+    CHACHA20_POLY -> Put.putWord16be 0x1303
+    AES128_CCM    -> Put.putWord16be 0x1304
+    AES128_CCM_8  -> Put.putWord16be 0x1305
+
+instance S.FromWire Cipher where
+  decode = S.getWord16be >>= \case
+    0x1301 -> pure AES128_GCM
+    0x1302 -> pure AES256_GCM
+    0x1303 -> pure CHACHA20_POLY
+    0x1304 -> pure AES128_CCM
+    0x1305 -> pure AES128_CCM_8
+    code   -> fail $ "Unknown Cipher code: " <> Dbg.showHex code
 
 newtype CipherSuites
   = CipherSuites { getCipherSuites :: V.Vector Cipher }
   deriving Show
 
-instance Serialization.ToWire CipherSuites where
+instance S.ToWire CipherSuites where
   encode (CipherSuites ciphers)
-    = Serialization.encodeVector 2 ciphers
+    = S.encodeVector 2 ciphers
+
+instance S.FromWire CipherSuites where
+  decode = error "wip decode CipherSuites"

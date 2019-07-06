@@ -1,3 +1,4 @@
+{-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE KindSignatures #-}
@@ -5,7 +6,7 @@
 module Network.TLS.Pure.Extension.SupportedVersions where
 
 import           Data.Foldable
-import qualified Data.Serialize.Put as S
+import qualified Data.Serialize as S
 import qualified Data.Vector as V
 
 import qualified Network.TLS.Pure.Serialization as Serialization
@@ -25,3 +26,6 @@ instance Serialization.ToWire (SupportedVersions a) where
       Serialization.encode $ Serialization.Opaque8 bytes
 
     SupportedVersionsSH version -> Serialization.encode version
+
+instance Serialization.FromWire (SupportedVersions 'H.MT.ServerHello) where
+  decode = SupportedVersionsSH <$> Serialization.decode

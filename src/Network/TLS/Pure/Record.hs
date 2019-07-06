@@ -1,14 +1,17 @@
+{-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE StrictData #-}
 {-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE RecordWildCards #-}
 
 module Network.TLS.Pure.Record where
 
+import Data.Functor
 import GHC.Word
 import qualified Data.ByteString as BS
-import qualified Data.Serialize.Put as S
-import Control.Monad (when)
+import Control.Monad (when, void)
+import qualified Data.Serialize.Put as Put
 
-import qualified Network.TLS.Pure.Serialization as Serialization
+import qualified Network.TLS.Pure.Serialization as S
 import qualified Network.TLS.Pure.Version as Version
 import qualified Network.TLS.Pure.Handshake as Handshake
 
@@ -17,28 +20,54 @@ data RecordContent
   -- | ChangeCipherSpec
   -- | Alert
   = Handshake Handshake.Handshake
-  | ApplicationData
+  | ChangeCipherSpec -- TODO
+  | ApplicationData BS.ByteString
 
-instance Serialization.ToWire RecordContent where
+instance S.ToWire RecordContent where
   encode = \case
-    Handshake h -> Serialization.encode h
-    ApplicationData -> error "wip encode application data"
+    Handshake h -> S.encode h
+    ChangeCipherSpec -> error "wip encode change cipher spec"
+    ApplicationData{} -> error "wip encode application data"
 
 data TLSRecord = TLSRecord
   { rVersion :: Version.ProtocolVersion
   , rContent :: RecordContent
   }
 
-encodeRecordContentType :: RecordContent -> S.Put
+encodeRecordContentType :: RecordContent -> Put.Put
 encodeRecordContentType = \case
-  Handshake{}       -> S.putWord8 0x16
-  ApplicationData{} -> S.putWord8 0x23
+  Handshake{}       -> Put.putWord8 0x16
+  ChangeCipherSpec  -> Put.putWord8 0x20
+  ApplicationData{} -> Put.putWord8 0x23
 
-instance Serialization.ToWire TLSRecord where
+instance S.ToWire TLSRecord where
   encode r = do
     encodeRecordContentType (rContent r)
-    Serialization.encode (rVersion r)
-    let bytes = S.runPut (Serialization.encode $ rContent r)
+    S.encode (rVersion r)
+    let bytes = Put.runPut (S.encode $ rContent r)
     -- when (BS.length bytes > 16384 {- 2¹⁴ -}) $ fail "record overflow"
     -- -- ^ TODO this should throw a "record_overflow" alert
-    Serialization.encode (Serialization.Opaque16 bytes)
+    S.encode (S.Opaque16 bytes)
+
+instance S.FromWire TLSRecord where
+  decode = S.getWord8 >>= \case
+    0x16 -> do
+      version <- S.decode
+      content <- S.getNested
+        (fromIntegral <$> S.getWord16be)
+        (Handshake <$> S.decode)
+      pure $ TLSRecord version content
+
+    0x20 -> do -- TODO do that properly
+      rVersion <- S.decode
+      l <- fromIntegral <$> S.getWord16be
+      rContent <- S.isolate l (S.getByteString l $> ChangeCipherSpec)
+      pure $ TLSRecord{..}
+
+    0x23 -> do -- TODO do that properly as well
+      rVersion <- S.decode
+      l <- fromIntegral <$> S.getWord16be
+      rContent <- S.isolate l (ApplicationData <$> S.getByteString l)
+      pure $ TLSRecord{..}
+
+    _code -> error "throw the proper error with code"

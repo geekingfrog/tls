@@ -11,16 +11,12 @@ import qualified Network.TLS.Pure.Cipher as Cipher
 import qualified Network.TLS.Pure.Extension as Extension
 import qualified Network.TLS.Pure.Version as Version
 import qualified Network.TLS.Pure.Handshake.MessageType as H.MT
-
-newtype Random = Random { getRandom :: BS.ByteString }
-
-instance Serialization.ToWire Random where
-  encode (Random bytes) = S.putByteString bytes
+import qualified Network.TLS.Pure.Handshake.Common as H.C
 
 data ClientHello13Data = ClientHello13Data
   { chlo13dCipherSuites :: Cipher.CipherSuites
   , chlo13dExtensions :: Extension.Extensions 'H.MT.ClientHello
-  , chlo13dRandom :: Random -- 32 bytes
+  , chlo13dRandom :: H.C.Random -- 32 bytes
   , chlo13dLegacySessionId :: Serialization.Opaque8 -- should be random garbage
   }
 
