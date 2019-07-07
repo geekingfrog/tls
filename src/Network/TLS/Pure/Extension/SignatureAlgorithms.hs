@@ -25,7 +25,7 @@ data SignatureAlgorithm
     | RsaPkcs1Sha1
     | EcdsaSha1
     -- | PrivateUse
-    deriving (Show)
+    deriving (Show, Eq)
 
 instance Serialization.ToWire SignatureAlgorithm where
   encode = \case
@@ -49,7 +49,7 @@ instance Serialization.ToWire SignatureAlgorithm where
 
 newtype SignatureAlgorithms
     = SignatureAlgorithms (V.Vector SignatureAlgorithm)
-    deriving (Show)
+    deriving (Show, Eq)
 
 instance Serialization.ToWire SignatureAlgorithms where
   encode (SignatureAlgorithms algs)

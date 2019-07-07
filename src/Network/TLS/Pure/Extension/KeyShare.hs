@@ -1,3 +1,4 @@
+{-# LANGUAGE StandaloneDeriving #-}
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE KindSignatures #-}
@@ -25,6 +26,7 @@ data KSE25519 = KSE25519
   { kse25519Public :: Curve25519.PublicKey
   , kse25519Private :: Maybe Curve25519.SecretKey
   }
+  deriving (Show, Eq)
 
 instance S.ToWire KSE25519 where
   encode kse
@@ -40,6 +42,7 @@ mkKSE25519 = do
 data KeyShareEntry
   = X25519 KSE25519
   | OtherKSE
+  deriving (Show, Eq)
 
 instance S.ToWire KeyShareEntry where
   encode = \case
@@ -70,6 +73,8 @@ data KeyShare (msgType :: H.MT.MessageType) where
   KeyShareSH :: KeyShareEntry -> KeyShare 'H.MT.ServerHello
   -- KeyShareHRR :: Group -> KeyShare 'H.MT.HelloRetryRequest
 
+deriving instance Eq (KeyShare a)
+deriving instance Show (KeyShare a)
 
 instance S.ToWire (KeyShare a) where
   encode = \case

@@ -3,7 +3,6 @@ module Network.TLS.Pure.Packet where
 import qualified Data.Vector as V
 import           Data.Foldable
 import qualified Control.Monad.Loops as Loops
-import qualified Data.Serialize as S
 
 import qualified Network.TLS.Pure.Serialization as Serialization
 import qualified Network.TLS.Pure.Record as Record

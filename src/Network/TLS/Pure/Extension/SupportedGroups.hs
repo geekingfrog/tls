@@ -10,7 +10,7 @@ import qualified Network.TLS.Pure.Serialization as S
 data Group
   = X25519
   | X448
-  deriving (Show)
+  deriving (Show, Eq)
 
 instance S.ToWire Group where
   encode = \case
@@ -25,6 +25,7 @@ instance S.FromWire Group where
 
 newtype SupportedGroups
   = SupportedGroups { getSupportedGroups :: V.Vector Group }
+  deriving (Show, Eq)
 
 instance S.ToWire SupportedGroups where
   encode (SupportedGroups groups) = S.encodeVector 2 groups

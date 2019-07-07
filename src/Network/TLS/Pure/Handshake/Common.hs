@@ -7,6 +7,7 @@ import qualified Network.TLS.Pure.Serialization as S
 
 -- TODO Random32? or make sure it's only 32 bytes
 newtype Random = Random { getRandom :: BS.ByteString }
+  deriving (Show, Eq)
 
 instance S.ToWire Random where
   encode (Random bytes) = Put.putByteString bytes

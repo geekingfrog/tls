@@ -12,7 +12,7 @@ data ProtocolVersion
   | TLS12
   | TLS13
   | Unknown Word16
-  deriving (Show)
+  deriving (Show, Eq)
 
 instance S.ToWire ProtocolVersion where
   encode = \case

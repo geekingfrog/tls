@@ -29,6 +29,8 @@ library
 
                      , bytes
                      , mmorph
+                     , template-haskell
+                     , th-lift-instances
 
   ghc-options:         -fwarn-incomplete-patterns -Werror
 
@@ -76,5 +78,10 @@ test-suite tls-test
                      , tls
                      , tasty
                      , tasty-hunit
+                     , bytestring
+                     , cryptonite
 
   other-modules:       Network.TLS.Pure.SerializationSpec
+                     , Network.TLS.Pure.DebugSpec
+                     , Network.TLS.Pure.Extension.KeyShareSpec
+                     , TestUtil

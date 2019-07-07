@@ -1,3 +1,4 @@
+{-# LANGUAGE StandaloneDeriving #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE GADTs #-}
@@ -18,6 +19,9 @@ data SupportedVersions (msgType :: H.MT.MessageType) where
   SupportedVersionsCH :: V.Vector Version.ProtocolVersion -> SupportedVersions 'H.MT.ClientHello
   SupportedVersionsSH :: Version.ProtocolVersion -> SupportedVersions 'H.MT.ServerHello
   -- TODO should also be there for HelloRetryRequest (HRR)
+
+deriving instance Eq (SupportedVersions a)
+deriving instance Show (SupportedVersions a)
 
 instance Serialization.ToWire (SupportedVersions a) where
   encode ver = case ver of

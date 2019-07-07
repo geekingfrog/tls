@@ -28,6 +28,7 @@ data Extension (a :: H.MT.MessageType)
   | ServerNameIndication SNI.ServerName
   | SupportedGroups SG.SupportedGroups
   | Unknown Word16 BS.ByteString
+  deriving (Show, Eq)
 
 instance S.ToWire (Extension a) where
   encode = \case
@@ -48,8 +49,8 @@ instance S.ToWire (Extension a) where
 
 instance S.FromWire (Extension 'H.MT.ServerHello) where
   decode = S.getWord16be >>= \case
-    43 -> SupportedVersions <$> S.decode
-    51 -> KeyShare <$> S.decode
+    43 -> S.getNested getExtLength (SupportedVersions <$> S.decode)
+    51 -> S.getNested getExtLength (KeyShare <$> S.decode)
     13 -> error "wip decode SignatureAlgorithms"
     0 -> error "wip decode SNI"
     10 -> error "wip decode SupportedGroups"
@@ -58,8 +59,11 @@ instance S.FromWire (Extension 'H.MT.ServerHello) where
       content <- S.isolate l $ S.getByteString l
       pure $ Unknown c content
 
+    where getExtLength = fmap fromIntegral S.getWord16be
+
 
 newtype Extensions a = Extensions { getExtensions :: V.Vector (Extension a) }
+  deriving (Show)
 
 instance S.ToWire (Extensions a) where
   encode (Extensions exts) = do

@@ -75,6 +75,7 @@ class FromWire a where
 
 newtype Opaque8
   = Opaque8 { getOpaque8 :: ByteString }
+  deriving (Show)
 
 instance ToWire Opaque8 where
   encode (Opaque8 bytes)
@@ -87,6 +88,7 @@ instance FromWire Opaque8 where
 
 newtype Opaque16
   = Opaque16 { getOpaque16 :: ByteString }
+  deriving (Show)
 
 instance ToWire Opaque16 where
   encode (Opaque16 bytes)
@@ -99,6 +101,7 @@ instance FromWire Opaque16 where
 
 newtype Opaque24
   = Opaque24 { getOpaque24 :: ByteString }
+  deriving (Show)
 
 instance ToWire Opaque24 where
   encode (Opaque24 bytes)
@@ -119,6 +122,7 @@ putWord24be i = do
 
 newtype Opaque32
   = Opaque32 { getOpaque32 :: ByteString }
+  deriving (Show)
 
 instance ToWire Opaque32 where
   encode (Opaque32 bytes)

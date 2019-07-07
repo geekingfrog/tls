@@ -19,6 +19,7 @@ data ServerHello13Data = ServerHello13Data
   , shlo13dCipherSuite :: Cipher.Cipher
   , shlo13dExtensions :: Extension.Extensions 'H.MT.ServerHello
   }
+  deriving (Show)
 
 instance S.FromWire ServerHello13Data where
   decode = do
