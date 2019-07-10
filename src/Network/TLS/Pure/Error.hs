@@ -1,5 +1,6 @@
 module Network.TLS.Pure.Error where
 
+import GHC.Word
 import qualified Crypto.Error as Crypto
 
 data ParseError
@@ -10,5 +11,9 @@ data ParseError
   | CryptoFailed Crypto.CryptoError
   -- ^ Whenever some key comes from the wire and the format isn't correct
   -- or whatever can fail during the conversion bytes -> key
+  | InvalidLength String
+  | InvalidSignatureAlgorithm Word16
+  | InvalidServerNameType Word8
+  | InvalidCompressionMethod Word8 Word8
 
   deriving (Show, Eq)

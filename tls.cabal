@@ -46,6 +46,7 @@ library
                      , Network.TLS.Pure.Handshake.Common
                      , Network.TLS.Pure.Handshake.ServerHello
                      , Network.TLS.Pure.Handshake.MessageType
+                     , Network.TLS.Pure.Prelude
                      , Network.TLS.Pure.Packet
                      , Network.TLS.Pure.Record
                      , Network.TLS.Pure.Serialization
@@ -68,7 +69,9 @@ executable tls-debug
                      , vector
                      , network-simple
                      , split
-                     , ghc-prim
+                     , base64-bytestring
+                     , memory
+                     , pem
 
 test-suite tls-test
   type:                exitcode-stdio-1.0
@@ -79,9 +82,14 @@ test-suite tls-test
                      , tasty
                      , tasty-hunit
                      , bytestring
+                     , vector
                      , cryptonite
+                     , cereal
+                     , hedgehog
+                     , tasty-hedgehog
 
   other-modules:       Network.TLS.Pure.SerializationSpec
                      , Network.TLS.Pure.DebugSpec
                      , Network.TLS.Pure.Extension.KeyShareSpec
+                     , Network.TLS.Pure.RoundtripSpec
                      , TestUtil

@@ -1,3 +1,7 @@
+{-# LANGUAGE BangPatterns #-}
+{-# LANGUAGE TupleSections #-}
+{-# LANGUAGE DeriveAnyClass #-}
+{-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE StandaloneDeriving #-}
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE GADTs #-}
@@ -8,6 +12,7 @@
 
 module Network.TLS.Pure.Extension.KeyShare where
 
+import           Control.Applicative
 import           Control.Monad                              (when)
 import qualified Crypto.Error                               as Crypto
 import qualified Crypto.PubKey.Curve25519                   as Curve25519
@@ -16,10 +21,13 @@ import qualified Data.ByteArray                             as BA
 import           Data.Foldable
 import qualified Data.Serialize.Put                         as Put
 import qualified Data.Vector                                as V
+import           GHC.Generics
 
 
+import qualified Network.TLS.Pure.Error                     as Err
 import qualified Network.TLS.Pure.Extension.SupportedGroups as Group
 import qualified Network.TLS.Pure.Handshake.MessageType     as H.MT
+import           Network.TLS.Pure.Prelude
 import qualified Network.TLS.Pure.Serialization             as S
 
 data KSE25519 = KSE25519
@@ -42,7 +50,7 @@ mkKSE25519 = do
 data KeyShareEntry
   = X25519 KSE25519
   | OtherKSE
-  deriving (Show, Eq)
+  deriving (Show, Eq, Generic, EqC)
 
 instance S.ToWire KeyShareEntry where
   encode = \case
@@ -54,15 +62,18 @@ instance S.ToWire KeyShareEntry where
     OtherKSE -> error "wip other KSE serialization"
 
 instance S.FromWire KeyShareEntry where
-  decode = S.decode >>= \case
-    Group.X25519 -> X25519 <$> do
-      l <- fromIntegral <$> S.getWord16be
-      raw <- S.getByteString l
-      case Crypto.eitherCryptoError (Curve25519.publicKey raw) of
-        Left cryptoError -> fail $ show cryptoError
-        Right publicKey -> pure $ KSE25519 publicKey Nothing
+  decode = fmap snd decodeKeyShareEntry
 
-    Group.X448 -> error "wip decode kse X448"
+decodeKeyShareEntry :: S.MonadTLSParser m => m (Int, KeyShareEntry)
+decodeKeyShareEntry = S.decode >>= \case
+  Group.X25519 -> do
+    l <- fromIntegral <$> S.getWord16be
+    raw <- S.getByteString l
+    case Crypto.eitherCryptoError (Curve25519.publicKey raw) of
+      Left cryptoError -> S.throwError $ Err.CryptoFailed cryptoError
+      Right publicKey -> pure (l, X25519 $ KSE25519 publicKey Nothing)
+
+  -- Group.X448 -> error "wip decode kse X448"
 
 -- TODO see if it's worth to add another type parameter: agent (Client | Server)
 -- to enforce that the key share have the private key or not
@@ -84,5 +95,41 @@ instance S.ToWire (KeyShare a) where
 
     KeyShareSH entry -> S.encode entry
 
+instance S.FromWire (KeyShare 'H.MT.ClientHello) where
+  decode = do
+    len <- fromIntegral <$> S.getWord16be
+    go len []
+
+    where
+      -- TODO this is likely not very good performance wise
+      go !n acc
+        | n < 0 = S.throwError $ Err.InvalidLength "Not enough bytes to decode key share entry"
+        | n == 0 = pure $ KeyShareCH (V.fromList $ reverse acc)
+        | otherwise = do
+            (l, kse) <- decodeKeyShareEntry
+            go (n-l) (kse : acc)
+
 instance S.FromWire (KeyShare 'H.MT.ServerHello) where
   decode = KeyShareSH <$> S.decode
+
+data KeyPair = KPX25519
+  { kpxPublic :: Curve25519.PublicKey
+  , kpxSecret :: Curve25519.SecretKey
+  , kpxDh     :: Curve25519.DhSecret
+  }
+  deriving (Show, Eq)
+
+extractKeyPair
+  :: KeyShareEntry
+  -> KeyShareEntry
+  -> Maybe KeyPair
+extractKeyPair a b = case (a, b) of
+  (X25519 kseA, X25519 kseB) -> do
+    (pub, sec) <-
+      ((kse25519Public kseA, ) <$> kse25519Private kseB)
+      <|>
+      ((kse25519Public kseB, ) <$> kse25519Private kseA)
+    -- TODO check for all zero result and throw an error if that's the case
+    let dh = Curve25519.dh pub sec
+    pure $ KPX25519 pub sec dh
+  _ -> Nothing

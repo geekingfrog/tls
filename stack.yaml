@@ -2,3 +2,7 @@ resolver: nightly-2018-10-12
 
 packages:
 - .
+
+extra-deps:
+  - hedgehog-1.0
+  - tasty-hedgehog-1.0.0.1

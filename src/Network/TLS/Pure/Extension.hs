@@ -1,3 +1,4 @@
+{-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE GADTs #-}
@@ -11,6 +12,7 @@ import qualified Data.ByteString     as BS
 import           Data.Foldable
 import qualified Data.Serialize.Put  as Put
 import qualified Data.Vector         as V
+import           GHC.Generics
 import           GHC.Word
 
 import qualified Network.TLS.Pure.Serialization as S
@@ -28,7 +30,7 @@ data Extension (a :: H.MT.MessageType)
   | ServerNameIndication SNI.ServerName
   | SupportedGroups SG.SupportedGroups
   | Unknown Word16 BS.ByteString
-  deriving (Show, Eq)
+  deriving (Show, Eq, Generic)
 
 instance S.ToWire (Extension a) where
   encode = \case
@@ -47,13 +49,27 @@ instance S.ToWire (Extension a) where
         let content = Put.runPut (S.encode ext)
         S.encode (S.Opaque16 content)
 
+instance S.FromWire (Extension 'H.MT.ClientHello) where
+  decode = S.getWord16be >>= \case
+    43 -> S.getNested getExtLength (SupportedVersions <$> S.decode)
+    51 -> S.getNested getExtLength (KeyShare <$> S.decode)
+    13 -> S.getNested getExtLength (SignatureAlgorithms <$> S.decode)
+    0  -> S.getNested getExtLength (ServerNameIndication <$> S.decode)
+    10 -> S.getNested getExtLength (SupportedGroups <$> S.decode)
+    c -> do
+      l <- fromIntegral <$> S.getWord16be
+      content <- S.isolate l $ S.getByteString l
+      pure $ Unknown c content
+
+    where getExtLength = fmap fromIntegral S.getWord16be
+
 instance S.FromWire (Extension 'H.MT.ServerHello) where
   decode = S.getWord16be >>= \case
     43 -> S.getNested getExtLength (SupportedVersions <$> S.decode)
     51 -> S.getNested getExtLength (KeyShare <$> S.decode)
-    13 -> error "wip decode SignatureAlgorithms"
-    0 -> error "wip decode SNI"
-    10 -> error "wip decode SupportedGroups"
+    13 -> S.getNested getExtLength (SignatureAlgorithms <$> S.decode)
+    0  -> S.getNested getExtLength (ServerNameIndication <$> S.decode)
+    10 -> S.getNested getExtLength (SupportedGroups <$> S.decode)
     c -> do
       l <- fromIntegral <$> S.getWord16be
       content <- S.isolate l $ S.getByteString l
@@ -70,7 +86,22 @@ instance S.ToWire (Extensions a) where
     let bytes = Put.runPut (traverse_ S.encode exts)
     S.encode (S.Opaque16 bytes)
 
+instance S.FromWire (Extensions 'H.MT.ClientHello) where
+  decode = do
+    l <- fromIntegral <$> S.getWord16be
+    Extensions . V.fromList <$> S.isolate l (Loops.untilM S.decode S.isEmpty)
+
 instance S.FromWire (Extensions 'H.MT.ServerHello) where
   decode = do
     l <- fromIntegral <$> S.getWord16be
     Extensions . V.fromList <$> S.isolate l (Loops.untilM S.decode S.isEmpty)
+
+findKeyShare :: Extensions a -> Maybe (KS.KeyShare a)
+findKeyShare (Extensions exts) = V.find isKeyShare exts >>= getKs
+  where
+    isKeyShare = \case
+      KeyShare _ -> True
+      _ -> False
+    getKs = \case
+      (KeyShare ks) -> Just ks
+      _ -> Nothing -- unreachable though

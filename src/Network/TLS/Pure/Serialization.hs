@@ -6,16 +6,17 @@
 
 module Network.TLS.Pure.Serialization where
 
-import qualified Control.Monad.Except as Ex
-import qualified Control.Monad.Morph  as Morph
-import           Data.Bits            (shiftL, shiftR, (.&.))
-import qualified Data.Bytes.Get       as S
-import           Data.ByteString      (ByteString)
-import qualified Data.ByteString      as BS
+import           Control.Monad
+import qualified Control.Monad.Except   as Ex
+import qualified Control.Monad.Morph    as Morph
+import           Data.Bits              (shiftL, shiftR, (.&.))
+import qualified Data.Bytes.Get         as S
+import           Data.ByteString        (ByteString)
+import qualified Data.ByteString        as BS
 import           Data.Foldable
-import qualified Data.Serialize.Get   as Get
-import qualified Data.Serialize.Put   as Put
-import qualified Data.Vector          as V
+import qualified Data.Serialize.Get     as Get
+import qualified Data.Serialize.Put     as Put
+import qualified Data.Vector            as V
 import           GHC.Word
 
 import qualified Network.TLS.Pure.Error as Err
@@ -30,6 +31,8 @@ class (Monad m) => MonadTLSParser m where
 
   isolate :: Int -> m a -> m a
   getNested :: m Int -> m a -> m a
+
+  throwError :: Err.ParseError -> m a
 
 
 newtype TLSParser a = TLSParser { unTLSParser :: Ex.ExceptT Err.ParseError Get.Get a }
@@ -66,6 +69,11 @@ instance MonadTLSParser TLSParser where
   getNested getLen getVal = do
     l <- getLen
     isolate l getVal
+
+  throwError = Ex.throwError
+
+runTLSEncoder :: Put.Put -> BS.ByteString
+runTLSEncoder = Put.runPut
 
 class ToWire a where
   encode :: a -> Put.Put
@@ -145,3 +153,18 @@ encodeVector itemSize items
   = do
     Put.putWord16be (fromIntegral $ V.length items * itemSize)
     traverse_ encode items
+
+decodeVector
+  :: (FromWire a, MonadTLSParser m)
+  => Int
+  -- ^ the size in byte of each item
+  -> m (V.Vector a)
+decodeVector itemLength = do
+  len <- fromIntegral <$> getWord16be
+  let (numberItems, remainder) = len `quotRem` itemLength
+  when (remainder /= 0) $ throwError
+    ( Err.InvalidLength
+    $ "Given number of bytes (" <> show len <> ") not a multiple of "
+    <> show itemLength
+    )
+  isolate len $ V.replicateM numberItems decode

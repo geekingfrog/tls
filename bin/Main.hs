@@ -1,32 +1,38 @@
+{-# LANGUAGE QuasiQuotes #-}
+{-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 
 module Main where
 
-import qualified Data.Serialize.Put as Put
-import qualified Data.Vector as V
-import qualified Data.ByteString as BS
-import qualified Crypto.Error as Crypto
-import qualified Crypto.PubKey.Curve25519 as C25519
-import qualified Network.Simple.TCP as TCP
+import qualified Crypto.Error                                    as Crypto
+import qualified Crypto.PubKey.Curve25519                        as C25519
+import qualified Data.ByteArray                                  as BA
+import qualified Data.ByteString                                 as BS
+import qualified Data.ByteString.Base64                          as B64
+import qualified Data.Serialize.Put                              as Put
+import qualified Data.Vector                                     as V
+import qualified Network.Simple.TCP                              as TCP
+import           Text.Printf                                     (printf)
+import qualified Data.PEM as PEM
 
-import qualified Network.TLS.Pure.Serialization as S
-import qualified Network.TLS.Pure.Cipher as Cipher
-import qualified Network.TLS.Pure.Extension as Extension
-import qualified Network.TLS.Pure.Version as Version
-import qualified Network.TLS.Pure.Handshake.Common as H.C
-import qualified Network.TLS.Pure.Handshake.ClientHello as Chlo
-import qualified Network.TLS.Pure.Extension.SupportedVersions as SV
-import qualified Network.TLS.Pure.Extension.SupportedGroups as SG
+import qualified Network.TLS.Pure.Cipher                         as Cipher
+import qualified Network.TLS.Pure.Extension                      as Extension
+import qualified Network.TLS.Pure.Extension.KeyShare             as KS
 import qualified Network.TLS.Pure.Extension.ServerNameIndication as SNI
-import qualified Network.TLS.Pure.Extension.SignatureAlgorithms as SA
-import qualified Network.TLS.Pure.Extension.KeyShare as KS
+import qualified Network.TLS.Pure.Extension.SignatureAlgorithms  as SA
+import qualified Network.TLS.Pure.Extension.SupportedGroups      as SG
+import qualified Network.TLS.Pure.Extension.SupportedVersions    as SV
+import qualified Network.TLS.Pure.Handshake.ClientHello          as Chlo
+import qualified Network.TLS.Pure.Handshake.Common               as H.C
+import qualified Network.TLS.Pure.Serialization                  as S
+import qualified Network.TLS.Pure.Version                        as Version
 
-import qualified Network.TLS.Pure.Handshake as Handshake
-import qualified Network.TLS.Pure.Record as Record
-import qualified Network.TLS.Pure.Packet as Pkt
+import qualified Network.TLS.Pure.Handshake                      as Handshake
+import qualified Network.TLS.Pure.Packet                         as Pkt
+import qualified Network.TLS.Pure.Record                         as Record
 
-import qualified Network.TLS.Pure.Debug as Dbg
+import qualified Network.TLS.Pure.Debug                          as Dbg
 
 main :: IO ()
 main = testHandshake *> putStrLn "done"
@@ -44,12 +50,67 @@ testHandshake = do
     putStrLn $ "Connected to: " <> show remoteAddr
     TCP.send socket (Put.runPut $ S.encode packet)
     Just resp <- TCP.recv socket 16000
-    let shlo = S.runTLSParser S.decode resp
-    case shlo of
+    case S.runTLSParser S.decode resp of
       Left err -> print err
-      Right (_ :: Pkt.TLSPacket) -> putStrLn "got a shlo"
+      Right (Pkt.TLSPacket packets) -> do
+        putStrLn "got a shlo"
+        print $ V.head packets
+        let shlo@(Record.Handshake (Handshake.ServerHello13 shloData)) = Record.rContent (V.head packets)
+        print shlo
+        print shloData
+        putStrLn "selected keyshare:"
+        let selectedKs = rightOrThrow $ Handshake.selectKeyShare chloData shloData
+        print selectedKs
+        -- let hexDh = concatMap (printf "%02x") (BS.unpack $ BA.convert $ KS.kpxDh selectedKs)
+        let hexDh = toHexStream (KS.kpxDh selectedKs)
+        putStrLn hexDh
+        putStrLn $ "(" <> show (length hexDh) <> ")"
+        putStrLn $ toHexStream (KS.kpxPublic selectedKs)
+        putStrLn $ toHexStream (KS.kpxSecret selectedKs)
+        BS.writeFile "./rawPublic.bin" (BA.convert $ KS.kpxPublic selectedKs)
+        BS.putStr $ B64.encode $ BA.convert $ KS.kpxDh selectedKs
+        putStr "\n"
+        dumpKs selectedKs
+
   pure ()
 
+toHexStream :: BA.ByteArrayAccess ba => ba -> String
+toHexStream = concatMap (printf "%02x") . BS.unpack . BA.convert
+
+dumpKs :: KS.KeyPair -> IO ()
+dumpKs ks = do
+  -- No idea what are the first 12 bytes of the pem content
+  let pub = PEM.PEM
+        { PEM.pemName = "PUBLIC KEY"
+        , PEM.pemHeader = []
+        , PEM.pemContent = BS.replicate 12 0 <> BA.convert (KS.kpxPublic ks)
+        }
+  BS.writeFile "./public.pem" (PEM.pemWriteBS pub)
+
+  let priv = PEM.PEM
+        { PEM.pemName = "PRIVATE KEY"
+        , PEM.pemHeader = []
+        , PEM.pemContent = BS.replicate 12 0 <> BA.convert (KS.kpxSecret ks)
+        }
+  BS.writeFile "./private.pem" (PEM.pemWriteBS priv)
+  putStrLn $ toHexStream $ KS.kpxDh ks
+
+  -- let rawChloSecret = [Dbg.hexStream|202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f|]
+  -- let rawChloPublic = [Dbg.hexStream|358072d6365880d1aeea329adf9121383851ed21a28e3b75e965d0d2cd166254|]
+  -- BS.writeFile "./rawChlo.pem" $ PEM.pemWriteBS $ PEM.PEM "PUBLIC KEY" [] rawChloPublic
+
+  pure ()
+
+-- checkDh :: IO ()
+-- checkDh = do
+--   let priv64 = "MC4CAQAwBQYDK2VuBCIEIJCRkpOUlZaXmJmam5ydnp+goaKjpKWmp6ipqqusra6v"
+--   let pub64 = "MCowBQYDK2VuAyEANYBy1jZYgNGu6jKa35EhODhR7SGijjt16WXQ0s0WYlQ="
+--   pure ()
+
+
+rightOrThrow = \case
+  Right a -> a
+  Left e -> error (show e)
 
 mkTestChlo :: IO Chlo.ClientHello13Data
 mkTestChlo = do

@@ -29,6 +29,9 @@ instance ShowHex Word16 where
     , (w .&. 0xFF00) `Bits.shiftR` 8
     ]
 
+-- | quasiquoter to include bytestrings as hex stream in the code:
+-- [hexStream|011d1a009557|]
+-- [hexStream|01 1d 1a 00 95 57|]
 hexStream :: TH.Q.QuasiQuoter
 hexStream = TH.Q.QuasiQuoter
   { TH.Q.quoteExp = quoteExprExp

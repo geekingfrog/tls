@@ -22,6 +22,7 @@ data RecordContent
   = Handshake Handshake.Handshake
   | ChangeCipherSpec -- TODO
   | ApplicationData BS.ByteString
+  deriving (Show)
 
 instance S.ToWire RecordContent where
   encode = \case
@@ -33,6 +34,7 @@ data TLSRecord = TLSRecord
   { rVersion :: Version.ProtocolVersion
   , rContent :: RecordContent
   }
+  deriving (Show)
 
 encodeRecordContentType :: RecordContent -> Put.Put
 encodeRecordContentType = \case

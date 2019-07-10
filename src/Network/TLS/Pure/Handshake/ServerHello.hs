@@ -31,5 +31,8 @@ instance S.FromWire ServerHello13Data where
     S.getWord8 -- compression method
     shlo13dExtensions <- S.decode
 
+    -- TODO perhaps validate the serverHello there, some extensions *must*
+    -- be present (like supported versions &co)
+    -- TODO check that there is no duplicate in the extensions
+
     pure $ ServerHello13Data{..}
-    -- error "wip decode server hello data"

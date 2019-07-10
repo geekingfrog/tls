@@ -16,7 +16,7 @@ data Cipher
   | AES128_CCM
   | AES128_CCM_8
   -- TODO add empty renegotiation info ?
-  deriving (Show)
+  deriving (Show, Eq)
 
 instance S.ToWire Cipher where
   encode = \case
@@ -37,11 +37,11 @@ instance S.FromWire Cipher where
 
 newtype CipherSuites
   = CipherSuites { getCipherSuites :: V.Vector Cipher }
-  deriving Show
+  deriving (Show, Eq)
 
 instance S.ToWire CipherSuites where
   encode (CipherSuites ciphers)
     = S.encodeVector 2 ciphers
 
 instance S.FromWire CipherSuites where
-  decode = error "wip decode CipherSuites"
+  decode = CipherSuites <$> S.decodeVector 2
