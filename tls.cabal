@@ -87,6 +87,11 @@ test-suite tls-test
                      , cereal
                      , hedgehog
                      , tasty-hedgehog
+                     , memory
+
+                     , mtl
+
+  ghc-options:         -fwarn-incomplete-patterns -Werror
 
   other-modules:       Network.TLS.Pure.SerializationSpec
                      , Network.TLS.Pure.DebugSpec

@@ -26,10 +26,7 @@ deriving instance Show (SupportedVersions a)
 
 instance S.ToWire (SupportedVersions a) where
   encode ver = case ver of
-    SupportedVersionsCH versions -> do
-      let bytes = S.runTLSEncoder $ traverse_ S.encode versions
-      S.encode $ S.Opaque8 bytes
-
+    SupportedVersionsCH versions -> S.encodeVector 2 versions
     SupportedVersionsSH version -> S.encode version
 
 instance S.FromWire (SupportedVersions 'H.MT.ClientHello) where

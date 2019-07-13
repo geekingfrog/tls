@@ -47,9 +47,9 @@ mkKSE25519 = do
   secret <- Curve25519.generateSecretKey
   pure $ KSE25519 (Curve25519.toPublic secret) (Just secret)
 
-data KeyShareEntry
+newtype KeyShareEntry
   = X25519 KSE25519
-  | OtherKSE
+  -- | OtherKSE
   deriving (Show, Eq, Generic, EqC)
 
 instance S.ToWire KeyShareEntry where
@@ -59,7 +59,7 @@ instance S.ToWire KeyShareEntry where
       let content = Put.runPut $ S.encode kse
       S.encode (S.Opaque16 content)
 
-    OtherKSE -> error "wip other KSE serialization"
+    -- OtherKSE -> error "wip other KSE serialization"
 
 instance S.FromWire KeyShareEntry where
   decode = fmap snd decodeKeyShareEntry
@@ -71,7 +71,8 @@ decodeKeyShareEntry = S.decode >>= \case
     raw <- S.getByteString l
     case Crypto.eitherCryptoError (Curve25519.publicKey raw) of
       Left cryptoError -> S.throwError $ Err.CryptoFailed cryptoError
-      Right publicKey -> pure (l, X25519 $ KSE25519 publicKey Nothing)
+      -- l + 2 (word16 for the length of l) + 2 (length of the encoded group)
+      Right publicKey -> pure (l+4, X25519 $ KSE25519 publicKey Nothing)
 
   -- Group.X448 -> error "wip decode kse X448"
 
@@ -132,4 +133,4 @@ extractKeyPair a b = case (a, b) of
     -- TODO check for all zero result and throw an error if that's the case
     let dh = Curve25519.dh pub sec
     pure $ KPX25519 pub sec dh
-  _ -> Nothing
+  -- _ -> Nothing

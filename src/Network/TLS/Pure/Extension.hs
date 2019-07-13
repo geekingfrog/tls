@@ -7,21 +7,21 @@
 
 module Network.TLS.Pure.Extension where
 
-import qualified Control.Monad.Loops as Loops
-import qualified Data.ByteString     as BS
+import qualified Control.Monad.Loops                             as Loops
+import qualified Data.ByteString                                 as BS
 import           Data.Foldable
-import qualified Data.Serialize.Put  as Put
-import qualified Data.Vector         as V
+import qualified Data.Serialize.Put                              as Put
+import qualified Data.Vector                                     as V
 import           GHC.Generics
 import           GHC.Word
 
-import qualified Network.TLS.Pure.Serialization as S
-import qualified Network.TLS.Pure.Handshake.MessageType as H.MT
-import qualified Network.TLS.Pure.Extension.SupportedVersions as SV
-import qualified Network.TLS.Pure.Extension.KeyShare as KS
-import qualified Network.TLS.Pure.Extension.SignatureAlgorithms as SA
+import qualified Network.TLS.Pure.Extension.KeyShare             as KS
 import qualified Network.TLS.Pure.Extension.ServerNameIndication as SNI
-import qualified Network.TLS.Pure.Extension.SupportedGroups as SG
+import qualified Network.TLS.Pure.Extension.SignatureAlgorithms  as SA
+import qualified Network.TLS.Pure.Extension.SupportedGroups      as SG
+import qualified Network.TLS.Pure.Extension.SupportedVersions    as SV
+import qualified Network.TLS.Pure.Handshake.MessageType          as H.MT
+import qualified Network.TLS.Pure.Serialization                  as S
 
 data Extension (a :: H.MT.MessageType)
   = SupportedVersions (SV.SupportedVersions a)

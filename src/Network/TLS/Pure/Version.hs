@@ -1,3 +1,5 @@
+{-# LANGUAGE TypeFamilies #-}
+{-# LANGUAGE DataKinds #-}
 {-# LANGUAGE LambdaCase #-}
 
 module Network.TLS.Pure.Version where
@@ -27,3 +29,6 @@ instance S.FromWire ProtocolVersion where
     0x0303 -> pure TLS12
     0x0304 -> pure TLS13
     code   -> pure (Unknown code)
+
+-- instance S.FixedSize ProtocolVersion where
+--   type WireLength ProtocolVersion = 2

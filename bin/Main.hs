@@ -134,7 +134,7 @@ testChlo kse = Chlo.ClientHello13Data
   , Chlo.chlo13dExtensions = Extension.Extensions $ V.fromList
     [ Extension.ServerNameIndication (SNI.ServerName "localhost")
     , Extension.SupportedVersions (SV.SupportedVersionsCH $ V.singleton Version.TLS13)
-    , Extension.SupportedGroups $ SG.SupportedGroups $ V.fromList [ SG.X25519, SG.X448 ]
+    , Extension.SupportedGroups $ SG.SupportedGroups $ V.fromList [ SG.X25519 ]
     , Extension.SignatureAlgorithms $ SA.SignatureAlgorithms $ V.fromList
       [ SA.RsaPkcs1Sha256
       , SA.RsaPkcs1Sha384
