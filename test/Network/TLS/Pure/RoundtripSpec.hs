@@ -1,3 +1,5 @@
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE DerivingStrategies #-}
 {-# LANGUAGE DataKinds #-}
 
 module Network.TLS.Pure.RoundtripSpec where
@@ -16,7 +18,6 @@ import  Crypto.Random.Types                   (MonadRandom(..))
 import qualified Crypto.PubKey.Curve25519                   as Curve25519
 import qualified Data.ByteArray                             as BA
 
-import Control.Monad.Trans
 
 import qualified Network.TLS.Pure.Cipher                as Cipher
 import qualified Network.TLS.Pure.Error                 as Err
@@ -84,10 +85,12 @@ genSupportedVersionCH = do
 genSupportedVersionSH :: H.Gen (SV.SupportedVersions 'H.MT.ServerHello)
 genSupportedVersionSH = SV.SupportedVersionsSH <$> genProtocolVersion
 
--- TODO get rid of this orphan instance
-instance Monad m => MonadRandom (H.GenT m) where
+newtype MyGenT m a = MyGenT { getGenT :: H.GenT m a }
+  deriving newtype (Functor, Applicative, Monad)
+
+instance Monad m => MonadRandom (MyGenT m) where
   getRandomBytes size = do
-    bytes <- Gen.bytes (Range.singleton size)
+    bytes <- MyGenT $ Gen.bytes (Range.singleton size)
     pure $ BA.convert bytes
 
 genKeyShareCH :: H.Gen (KS.KeyShare 'H.MT.ClientHello)
@@ -99,9 +102,9 @@ genKeyShareSH :: H.Gen (KS.KeyShare 'H.MT.ServerHello)
 genKeyShareSH = KS.KeyShareSH <$> genKSE
 
 
-genKSE :: (H.MonadGen m, MonadRandom m) => m KS.KeyShareEntry
+genKSE :: H.Gen KS.KeyShareEntry
 genKSE = do
-  secret <- Curve25519.generateSecretKey
+  secret <- getGenT Curve25519.generateSecretKey
   let pub = Curve25519.toPublic secret
   -- the secret key isn't serialized, so omit it for roundtrip checks
   pure $ KS.X25519 $ KS.KSE25519 pub Nothing
