@@ -9,7 +9,7 @@ import qualified Crypto.Error                                    as Crypto
 import qualified Crypto.PubKey.Curve25519                        as C25519
 import qualified Data.ByteArray                                  as BA
 import qualified Data.ByteString                                 as BS
-import qualified Data.ByteString.Base64                          as B64
+-- import qualified Data.ByteString.Base64                          as B64
 import qualified Data.Serialize.Put                              as Put
 import qualified Data.Vector                                     as V
 import qualified Network.Simple.TCP                              as TCP
@@ -55,7 +55,8 @@ testHandshake = do
       Right (Pkt.TLSPacket packets) -> do
         putStrLn "got a shlo"
         print $ V.head packets
-        let shlo@(Record.Handshake (Handshake.ServerHello13 shloData)) = Record.rContent (V.head packets)
+        let shloRecord = V.head packets
+        let shlo@(Record.Handshake (Handshake.ServerHello13 shloData)) = Record.rContent shloRecord
         print shlo
         print shloData
         putStrLn "selected keyshare:"
@@ -68,9 +69,16 @@ testHandshake = do
         putStrLn $ toHexStream (KS.kpxPublic selectedKs)
         putStrLn $ toHexStream (KS.kpxSecret selectedKs)
         BS.writeFile "./rawPublic.bin" (BA.convert $ KS.kpxPublic selectedKs)
-        BS.putStr $ B64.encode $ BA.convert $ KS.kpxDh selectedKs
+        putStrLn "shared secret:"
+        putStrLn $ toHexStream $ KS.kpxDh selectedKs
         putStr "\n"
-        dumpKs selectedKs
+        -- dumpKs selectedKs
+
+        putStrLn "chlo bytes:"
+        putStrLn $ toHexStream $ S.runTLSEncoder (S.encode $ Record.rContent record)
+        putStrLn "shlo bytes"
+        putStrLn $ toHexStream $ S.runTLSEncoder (S.encode $ Record.rContent shloRecord)
+        pure ()
 
   pure ()
 

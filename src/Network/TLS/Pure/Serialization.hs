@@ -84,7 +84,7 @@ class FromWire a where
 
 newtype Opaque8
   = Opaque8 { getOpaque8 :: ByteString }
-  deriving (Show)
+  deriving (Eq, Show)
 
 instance ToWire Opaque8 where
   encode (Opaque8 bytes)
@@ -97,7 +97,7 @@ instance FromWire Opaque8 where
 
 newtype Opaque16
   = Opaque16 { getOpaque16 :: ByteString }
-  deriving (Show)
+  deriving (Eq, Show)
 
 instance ToWire Opaque16 where
   encode (Opaque16 bytes)
@@ -110,7 +110,7 @@ instance FromWire Opaque16 where
 
 newtype Opaque24
   = Opaque24 { getOpaque24 :: ByteString }
-  deriving (Show)
+  deriving (Eq, Show)
 
 instance ToWire Opaque24 where
   encode (Opaque24 bytes)
@@ -131,7 +131,7 @@ putWord24be i = do
 
 newtype Opaque32
   = Opaque32 { getOpaque32 :: ByteString }
-  deriving (Show)
+  deriving (Eq, Show)
 
 instance ToWire Opaque32 where
   encode (Opaque32 bytes)
@@ -157,11 +157,13 @@ encodeVector itemSize items
 
 decodeVector
   :: (FromWire a, MonadTLSParser m)
-  => Int
+  => m Int
+  -- ^ how to get the size
+  -> Int
   -- ^ the size in byte of each item
   -> m (V.Vector a)
-decodeVector itemLength = do
-  len <- fromIntegral <$> getWord16be
+decodeVector getLen itemLength = do
+  len <- getLen
   let (numberItems, remainder) = len `quotRem` itemLength
   when (remainder /= 0) $ throwError
     ( Err.InvalidLength
@@ -169,3 +171,32 @@ decodeVector itemLength = do
     <> show itemLength
     )
   isolate len $ V.replicateM numberItems decode
+
+decodeVector16, decodeVector8
+  :: (FromWire a, MonadTLSParser m)
+  => Int
+  -- ^ the size in byte of each item
+  -> m (V.Vector a)
+decodeVector16 = decodeVector (fromIntegral <$> getWord16be)
+decodeVector8  = decodeVector (fromIntegral <$> getWord8)
+
+-- TODO this may be slow, benchmark and improve
+decodeVectorVariable
+  :: (MonadTLSParser m)
+  => String
+  -> Int
+  -> m (Int, a)
+  -> m (V.Vector a)
+
+decodeVectorVariable desc len getVal = go len []
+  where
+    go !n acc
+      | n < 0 = throwError $ Err.InvalidLength $ "Not enough bytes to decode key " <> desc
+      | n == 0 = pure $ V.fromList $ reverse acc
+      | otherwise = do
+          (l, a) <- getVal
+          go (n-l) (a : acc)
+
+
+    -- l <- fromIntegral <$> S.getWord16be
+    -- Extensions . V.fromList <$> S.isolate l (Loops.untilM S.decode S.isEmpty)

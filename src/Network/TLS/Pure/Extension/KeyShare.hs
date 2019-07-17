@@ -99,16 +99,8 @@ instance S.ToWire (KeyShare a) where
 instance S.FromWire (KeyShare 'H.MT.ClientHello) where
   decode = do
     len <- fromIntegral <$> S.getWord16be
-    go len []
+    KeyShareCH <$> S.decodeVectorVariable "key share entry" len decodeKeyShareEntry
 
-    where
-      -- TODO this is likely not very good performance wise
-      go !n acc
-        | n < 0 = S.throwError $ Err.InvalidLength "Not enough bytes to decode key share entry"
-        | n == 0 = pure $ KeyShareCH (V.fromList $ reverse acc)
-        | otherwise = do
-            (l, kse) <- decodeKeyShareEntry
-            go (n-l) (kse : acc)
 
 instance S.FromWire (KeyShare 'H.MT.ServerHello) where
   decode = KeyShareSH <$> S.decode

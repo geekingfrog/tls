@@ -26,12 +26,15 @@ deriving instance Show (SupportedVersions a)
 
 instance S.ToWire (SupportedVersions a) where
   encode ver = case ver of
-    SupportedVersionsCH versions -> S.encodeVector 2 versions
+    SupportedVersionsCH versions -> do
+      let bytes = S.runTLSEncoder $ traverse_ S.encode versions
+      S.encode $ S.Opaque8 bytes
+
     SupportedVersionsSH version -> S.encode version
 
 instance S.FromWire (SupportedVersions 'H.MT.ClientHello) where
   decode = do
-    versions <- S.decodeVector 2
+    versions <- S.decodeVector8 2
     -- TODO check which TLS error that should generate
     when (V.null versions) $ S.throwError (Err.InvalidLength "empty versions for SupportedVersions")
     pure $ SupportedVersionsCH versions

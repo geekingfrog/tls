@@ -44,4 +44,4 @@ instance S.ToWire CipherSuites where
     = S.encodeVector 2 ciphers
 
 instance S.FromWire CipherSuites where
-  decode = CipherSuites <$> S.decodeVector 2
+  decode = CipherSuites <$> S.decodeVector16 2

@@ -19,7 +19,7 @@ import qualified Network.TLS.Pure.Serialization         as S
 data Handshake
   = ClientHello13 CH.ClientHello13Data
   | ServerHello13 SH.ServerHello13Data
-  deriving (Show)
+  deriving (Eq, Show)
 
 instance S.ToWire Handshake where
   encode = \case
@@ -28,12 +28,15 @@ instance S.ToWire Handshake where
       let bytes = Put.runPut (S.encode chloData)
       S.encode (S.Opaque24 bytes)
 
-    ServerHello13{} -> error "wip encode serverHello13"
+    ServerHello13 shloData -> do
+      S.encode MT.ServerHello
+      let bytes = Put.runPut (S.encode shloData)
+      S.encode (S.Opaque24 bytes)
 
 
 instance S.FromWire Handshake where
   decode = S.decode >>= \case
-    MT.ClientHello -> error "wip decode handshake client hello"
+    MT.ClientHello -> S.getNested (fmap fromIntegral S.getWord24be) (ClientHello13 <$> S.decode)
     MT.ServerHello -> S.getNested (fmap fromIntegral S.getWord24be) (ServerHello13 <$> S.decode)
     MT.Unknown w -> fail $ "Unknown message type: " <> show w
 

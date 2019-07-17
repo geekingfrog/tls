@@ -18,12 +18,12 @@ import qualified Network.TLS.Pure.Serialization         as S
 import qualified Network.TLS.Pure.Version               as Version
 
 data ClientHello13Data = ClientHello13Data
-  { chlo13dCipherSuites :: Cipher.CipherSuites
-  , chlo13dExtensions :: Extension.Extensions 'H.MT.ClientHello
-  , chlo13dRandom :: H.C.Random -- 32 bytes
+  { chlo13dRandom :: H.C.Random -- 32 bytes
   , chlo13dLegacySessionId :: S.Opaque8 -- should be random garbage
+  , chlo13dCipherSuites :: Cipher.CipherSuites
+  , chlo13dExtensions :: Extension.Extensions 'H.MT.ClientHello
   }
-  deriving (Show)
+  deriving (Eq, Show)
 
 instance S.ToWire ClientHello13Data where
   encode chlo = do

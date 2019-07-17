@@ -31,4 +31,4 @@ instance S.ToWire SupportedGroups where
   encode (SupportedGroups groups) = S.encodeVector 2 groups
 
 instance S.FromWire SupportedGroups where
-  decode = SupportedGroups <$> S.decodeVector 2
+  decode = SupportedGroups <$> S.decodeVector16 2

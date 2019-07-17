@@ -1,3 +1,5 @@
+{-# LANGUAGE UndecidableInstances #-}
+{-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE DataKinds #-}
@@ -29,7 +31,7 @@ data Extension (a :: H.MT.MessageType)
   | SignatureAlgorithms SA.SignatureAlgorithms
   | ServerNameIndication SNI.ServerName
   | SupportedGroups SG.SupportedGroups
-  | Unknown Word16 BS.ByteString
+  | Unknown Word16 S.Opaque16
   deriving (Show, Eq, Generic)
 
 instance S.ToWire (Extension a) where
@@ -41,7 +43,7 @@ instance S.ToWire (Extension a) where
     SupportedGroups groups -> encodeWithCode 10 groups
     Unknown code content -> do
       Put.putWord16be code
-      S.encode (S.Opaque16 content)
+      S.encode content
 
     where
       encodeWithCode code ext = do
@@ -49,52 +51,55 @@ instance S.ToWire (Extension a) where
         let content = Put.runPut (S.encode ext)
         S.encode (S.Opaque16 content)
 
-instance S.FromWire (Extension 'H.MT.ClientHello) where
-  decode = S.getWord16be >>= \case
-    43 -> S.getNested getExtLength (SupportedVersions <$> S.decode)
-    51 -> S.getNested getExtLength (KeyShare <$> S.decode)
-    13 -> S.getNested getExtLength (SignatureAlgorithms <$> S.decode)
-    0  -> S.getNested getExtLength (ServerNameIndication <$> S.decode)
-    10 -> S.getNested getExtLength (SupportedGroups <$> S.decode)
-    c -> do
-      l <- fromIntegral <$> S.getWord16be
-      content <- S.isolate l $ S.getByteString l
-      pure $ Unknown c content
+instance
+  ( S.FromWire (SV.SupportedVersions a)
+  , S.FromWire (KS.KeyShare a)
+  ) => S.FromWire (Extension a) where
+  decode = fmap snd decodeExtension
 
-    where getExtLength = fmap fromIntegral S.getWord16be
+decodeExtension
+  :: ( S.MonadTLSParser m
+     , S.FromWire (SV.SupportedVersions a)
+     , S.FromWire (KS.KeyShare a)
+     )
+  => m (Int, Extension a)
+decodeExtension = S.getWord16be >>= \case
+  43 -> getExt (SupportedVersions <$> S.decode)
+  51 -> getExt (KeyShare <$> S.decode)
+  13 -> getExt (SignatureAlgorithms <$> S.decode)
+  0  -> getExt (ServerNameIndication <$> S.decode)
+  10 -> getExt (SupportedGroups <$> S.decode)
+  c -> do
+    l <- fromIntegral <$> S.getWord16be
+    content <- S.isolate l $ S.getByteString l
+    pure (l+4, Unknown c (S.Opaque16 content))
 
-instance S.FromWire (Extension 'H.MT.ServerHello) where
-  decode = S.getWord16be >>= \case
-    43 -> S.getNested getExtLength (SupportedVersions <$> S.decode)
-    51 -> S.getNested getExtLength (KeyShare <$> S.decode)
-    13 -> S.getNested getExtLength (SignatureAlgorithms <$> S.decode)
-    0  -> S.getNested getExtLength (ServerNameIndication <$> S.decode)
-    10 -> S.getNested getExtLength (SupportedGroups <$> S.decode)
-    c -> do
-      l <- fromIntegral <$> S.getWord16be
-      content <- S.isolate l $ S.getByteString l
-      pure $ Unknown c content
-
-    where getExtLength = fmap fromIntegral S.getWord16be
+  where
+    getExt act = do
+      len <- fromIntegral <$> S.getWord16be
+      ext <- S.isolate len act
+      pure (len+4, ext)
 
 
 newtype Extensions a = Extensions { getExtensions :: V.Vector (Extension a) }
-  deriving (Show)
+  deriving (Eq, Show)
 
 instance S.ToWire (Extensions a) where
   encode (Extensions exts) = do
-    let bytes = Put.runPut (traverse_ S.encode exts)
+    let bytes = S.runTLSEncoder (traverse_ S.encode exts)
     S.encode (S.Opaque16 bytes)
 
 instance S.FromWire (Extensions 'H.MT.ClientHello) where
   decode = do
     l <- fromIntegral <$> S.getWord16be
-    Extensions . V.fromList <$> S.isolate l (Loops.untilM S.decode S.isEmpty)
+    Extensions <$> S.decodeVectorVariable "extensions" l decodeExtension
+    -- Extensions . V.fromList <$> S.isolate l (Loops.untilM S.decode S.isEmpty)
 
 instance S.FromWire (Extensions 'H.MT.ServerHello) where
   decode = do
     l <- fromIntegral <$> S.getWord16be
-    Extensions . V.fromList <$> S.isolate l (Loops.untilM S.decode S.isEmpty)
+    Extensions <$> S.decodeVectorVariable "extensions" l decodeExtension
+    -- Extensions . V.fromList <$> S.isolate l (Loops.untilM S.decode S.isEmpty)
 
 findKeyShare :: Extensions a -> Maybe (KS.KeyShare a)
 findKeyShare (Extensions exts) = V.find isKeyShare exts >>= getKs
