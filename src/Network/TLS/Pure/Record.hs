@@ -1,7 +1,6 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE StrictData #-}
 {-# LANGUAGE LambdaCase #-}
-{-# LANGUAGE RecordWildCards #-}
 
 module Network.TLS.Pure.Record where
 
@@ -15,20 +14,19 @@ import qualified Network.TLS.Pure.Serialization as S
 import qualified Network.TLS.Pure.Version as Version
 import qualified Network.TLS.Pure.Handshake as Handshake
 
-newtype RecordContent
+data RecordContent
   -- = Invalid
-  -- | ChangeCipherSpec
+  = ChangeCipherSpec
   -- | Alert
-  = Handshake Handshake.Handshake
-  -- | ChangeCipherSpec -- TODO
-  -- | ApplicationData BS.ByteString
+  | Handshake Handshake.Handshake
+  | ApplicationData S.Opaque16
   deriving (Eq, Show)
 
 instance S.ToWire RecordContent where
   encode = \case
     Handshake h -> S.encode h
-    -- ChangeCipherSpec -> error "wip encode change cipher spec"
-    -- ApplicationData{} -> error "wip encode application data"
+    ChangeCipherSpec -> S.encode (S.Opaque16 $ BS.singleton 0x01)
+    ApplicationData content -> S.encode content
 
 data TLSRecord = TLSRecord
   { rVersion :: Version.ProtocolVersion
@@ -39,8 +37,8 @@ data TLSRecord = TLSRecord
 encodeRecordContentType :: RecordContent -> Put.Put
 encodeRecordContentType = \case
   Handshake{}       -> Put.putWord8 0x16
-  -- ChangeCipherSpec  -> Put.putWord8 0x20
-  -- ApplicationData{} -> Put.putWord8 0x23
+  ChangeCipherSpec  -> Put.putWord8 0x14
+  ApplicationData{} -> Put.putWord8 0x17
 
 instance S.ToWire TLSRecord where
   encode r = do
@@ -52,24 +50,31 @@ instance S.ToWire TLSRecord where
     S.encode (S.Opaque16 bytes)
 
 instance S.FromWire TLSRecord where
-  decode = S.getWord8 >>= \case
-    0x16 -> do
-      version <- S.decode
-      content <- S.getNested
-        (fromIntegral <$> S.getWord16be)
-        (Handshake <$> S.decode)
-      pure $ TLSRecord version content
+  decode = fmap snd decodeRecord
 
-    -- 0x20 -> do -- TODO do that properly
-    --   rVersion <- S.decode
-    --   l <- fromIntegral <$> S.getWord16be
-    --   rContent <- S.isolate l (S.getByteString l $> ChangeCipherSpec)
-    --   pure $ TLSRecord{..}
-    --
-    -- 0x23 -> do -- TODO do that properly as well
-    --   rVersion <- S.decode
-    --   l <- fromIntegral <$> S.getWord16be
-    --   rContent <- S.isolate l (ApplicationData <$> S.getByteString l)
-    --   pure $ TLSRecord{..}
+-- TODO the manuall tracking of the length is *very* tedious and error prone
+decodeRecord :: (S.MonadTLSParser m) => m (Int, TLSRecord)
+decodeRecord = S.getWord8 >>= \case
+  -- handshake
+  0x16 -> do
+    version <- S.decode
+    len <- fromIntegral <$> S.getWord16be
+    content <- S.isolate len (Handshake <$> S.decode)
+    pure (len+5, TLSRecord version content)
 
-    _code -> error "throw the proper error with code"
+  -- change cipher spec
+  0x14 -> do
+    -- TODO check that the version is TLS12 and the content should only be
+    -- one byte long
+    version <- S.decode
+    (_content :: S.Opaque16) <- S.decode
+    pure (6, TLSRecord version ChangeCipherSpec)
+
+  -- application data
+  0x17 -> do
+    version <- S.decode
+    content <- S.decode
+    let len = BS.length (S.getOpaque16 content) + 5
+    pure (len, TLSRecord version (ApplicationData content))
+
+  code -> error $ "can't decrypt record with code: " <> show code

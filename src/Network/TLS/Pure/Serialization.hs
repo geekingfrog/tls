@@ -39,6 +39,7 @@ class (Monad m) => MonadTLSParser m where
   getWord32be :: m Word32
   getByteString :: Int -> m BS.ByteString
   isEmpty :: m Bool
+  remaining :: m Int
 
   isolate :: Int -> m a -> m a
   getNested :: m Int -> m a -> m a
@@ -65,6 +66,7 @@ instance MonadTLSParser TLSParser where
   getWord16be = S.getWord16be
   getWord32be = S.getWord32be
   getByteString = S.getByteString
+  remaining = S.remaining
 
   getWord24be = do
       a <- fromIntegral <$> S.getWord8

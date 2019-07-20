@@ -40,7 +40,8 @@ import qualified Network.TLS.Pure.Record                         as Record
 import qualified Network.TLS.Pure.Debug                          as Dbg
 
 main :: IO ()
-main = dumpNSS undefined undefined undefined -- testHandshake *> putStrLn "done"
+-- main = dumpNSS undefined undefined undefined -- testHandshake *> putStrLn "done"
+main = testHandshake *> putStrLn "done"
 
 
 testHandshake :: IO ()
@@ -58,7 +59,7 @@ testHandshake = do
     case S.runTLSParser S.decode resp of
       Left err -> print err
       Right (Pkt.TLSPacket packets) -> do
-        putStrLn "got a shlo"
+        putStrLn $ "got some TLS records: " <> show (V.length packets)
         print $ V.head packets
         let shloRecord = V.head packets
         let shlo@(Record.Handshake (Handshake.ServerHello13 shloData)) = Record.rContent shloRecord
