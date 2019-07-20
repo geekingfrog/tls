@@ -1,20 +1,25 @@
 {-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 
 module Main where
 
 import qualified Crypto.Error                                    as Crypto
+import qualified Crypto.Hash.SHA256                              as SHA256
+import           Crypto.Hash.Algorithms                          (SHA256)
+import qualified Crypto.KDF.HKDF                                 as HKDF
 import qualified Crypto.PubKey.Curve25519                        as C25519
 import qualified Data.ByteArray                                  as BA
 import qualified Data.ByteString                                 as BS
+import qualified Data.ByteString.Char8                           as BS8
 -- import qualified Data.ByteString.Base64                          as B64
+import qualified Data.PEM                                        as PEM
 import qualified Data.Serialize.Put                              as Put
 import qualified Data.Vector                                     as V
 import qualified Network.Simple.TCP                              as TCP
 import           Text.Printf                                     (printf)
-import qualified Data.PEM as PEM
 
 import qualified Network.TLS.Pure.Cipher                         as Cipher
 import qualified Network.TLS.Pure.Extension                      as Extension
@@ -35,17 +40,17 @@ import qualified Network.TLS.Pure.Record                         as Record
 import qualified Network.TLS.Pure.Debug                          as Dbg
 
 main :: IO ()
-main = testHandshake *> putStrLn "done"
+main = dumpNSS undefined undefined undefined -- testHandshake *> putStrLn "done"
 
 
 testHandshake :: IO ()
 testHandshake = do
   chloData <- mkTestChlo
-  let record = Record.TLSRecord
+  let chloRecord = Record.TLSRecord
         { Record.rVersion = Version.TLS10
         , Record.rContent = Record.Handshake (Handshake.ClientHello13 chloData)
         }
-  let packet = Pkt.TLSPacket $ V.singleton record
+  let packet = Pkt.TLSPacket $ V.singleton chloRecord
   TCP.connect "localhost" "4433" $ \(socket, remoteAddr) -> do
     putStrLn $ "Connected to: " <> show remoteAddr
     TCP.send socket (Put.runPut $ S.encode packet)
@@ -75,15 +80,36 @@ testHandshake = do
         -- dumpKs selectedKs
 
         putStrLn "chlo bytes:"
-        putStrLn $ toHexStream $ S.runTLSEncoder (S.encode $ Record.rContent record)
+        putStrLn $ toHexStream $ S.runTLSEncoder (S.encode $ Record.rContent chloRecord)
         putStrLn "shlo bytes"
         putStrLn $ toHexStream $ S.runTLSEncoder (S.encode $ Record.rContent shloRecord)
+
+        let chloBytes = S.runTLSEncoder (S.encode $ Record.rContent chloRecord)
+        let shloBytes = S.runTLSEncoder (S.encode $ Record.rContent shloRecord)
+        let helloHash = SHA256.finalize (SHA256.updates SHA256.init [chloBytes, shloBytes])
+        BS.putStr helloHash
+        dumpNSS selectedKs (Chlo.chlo13dRandom chloData) helloHash
+        putStr "\n"
+
+        -- dumpKeylog selectedKs
         pure ()
 
   pure ()
 
 toHexStream :: BA.ByteArrayAccess ba => ba -> String
 toHexStream = concatMap (printf "%02x") . BS.unpack . BA.convert
+
+dumpKeylog :: KS.KeyPair -> IO ()
+dumpKeylog ks = do
+  let keylog = BS.concat
+        [ "CLIENT_HANDSHAKE_TRAFFIC_SECRET "
+        , BS8.pack (toHexStream $ KS.kpxPublic ks)
+        , " "
+        , BS8.pack (toHexStream $ KS.kpxSecret ks)
+        , "\n"
+        ]
+  BS.writeFile "debug/mykeylog.txt" keylog
+  pure ()
 
 dumpKs :: KS.KeyPair -> IO ()
 dumpKs ks = do
@@ -164,6 +190,54 @@ testChlo kse = Chlo.ClientHello13Data
     , Extension.KeyShare $ KS.KeyShareCH $ V.singleton kse
     ]
   }
+
+dumpNSS :: KS.KeyPair -> H.C.Random -> BS.ByteString -> IO ()
+dumpNSS kp (H.C.Random clientRandom) helloHash = do
+  -- let sharedSecret = KS.kpxDh kp
+
+  let helloHash = [Dbg.hexStream|da75ce1139ac80dae4044da932350cf65c97ccc9e33f1e6f7d2d4b18b736ffd5|]
+  let sharedSecret = [Dbg.hexStream|df4a291baa1eb7cfa6934b29b474baad2697e29f1f920dcc77c8a0a088447624|]
+  let clientRandom = BS.pack [0..31]
+
+  let earlySecret = HKDF.extract @SHA256 BS.empty (BS.replicate 32 0)
+  let emptyHash = SHA256.hash mempty
+  let derivedSecret = hkdfExpandLabel earlySecret "derived" emptyHash 32
+  let handshakeSecret = HKDF.extract @SHA256 derivedSecret sharedSecret
+  let clientSecret = HKDF.extractSkip $ hkdfExpandLabel handshakeSecret "c hs traffic" helloHash 32
+  let serverSecret = HKDF.extractSkip $ hkdfExpandLabel handshakeSecret "s hs traffic" helloHash 32
+  let clientHandshakeKey = hkdfExpandLabel clientSecret "key" BS.empty 16
+  let serverHandshakeKey = hkdfExpandLabel serverSecret "key" BS.empty 16
+  let clientHandshakeIV = hkdfExpandLabel clientSecret "iv" BS.empty 12
+  let serverHandshakeIV = hkdfExpandLabel serverSecret "iv" BS.empty 12
+  let clientRandomHex = toHexStream clientRandom
+
+  -- I need the bytes from all the handshake messages to compute the traffic secrets
+  -- let masterSecret = HKDF.extractSkip $ HKDF.extract @SHA256 BS.empty derivedSecret
+  -- let clientTrafficSecret0 = hkdfExpandLabel
+
+  let nss = "CLIENT_HANDSHAKE_TRAFFIC_SECRET "
+        <> clientRandomHex <> " " <> toHexStream clientHandshakeKey
+        <> "\n"
+        <> "SERVER_HANDSHAKE_TRAFFIC_SECRET "
+        <> clientRandomHex <> " " <> toHexStream serverHandshakeKey
+        <> "\n"
+  putStrLn nss
+  writeFile "debug/mykeylog.txt" nss
+  pure ()
+
+hkdfExpandLabel
+  :: HKDF.PRK SHA256
+  -> BS.ByteString
+  -> BS.ByteString
+  -> Int
+  -> BS.ByteString -- out
+
+hkdfExpandLabel secret label context outLen
+  = let label' = S.runTLSEncoder $ do
+          Put.putWord16be (fromIntegral outLen)
+          S.encode $ S.Opaque8 $ "tls13 " <> BA.convert label
+          S.encode $ S.Opaque8 $ BA.convert context
+    in HKDF.expand secret label' outLen
 
 -- testRepl :: IO _
 testRepl = do

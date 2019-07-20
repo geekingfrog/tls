@@ -6,3 +6,4 @@ packages:
 extra-deps:
   - hedgehog-1.0
   - tasty-hedgehog-1.0.0.1
+  - cryptohash-sha256-0.11.101.0

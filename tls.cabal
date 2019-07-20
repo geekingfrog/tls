@@ -22,6 +22,7 @@ library
                      , bytestring
                      , vector
                      , cryptonite
+                     , cryptohash-sha256
                      , memory
                      , mtl
                      , errors
@@ -59,8 +60,7 @@ executable tls-debug
   hs-source-dirs:      bin
   default-language:    Haskell2010
   main-is:             Main.hs
-  ghc-options: -O2 -threaded -rtsopts -with-rtsopts=-N -Wall -Wno-unused-do-bind -Worphans
-               -Wno-missing-signatures -Wno-unused-local-binds
+  ghc-options: -O2 -threaded -rtsopts -with-rtsopts=-N -fwarn-incomplete-patterns -Werror
   build-depends:       base
                      , tls
                      , cryptonite
@@ -72,6 +72,7 @@ executable tls-debug
                      , base64-bytestring
                      , memory
                      , pem
+                     , cryptohash-sha256
 
 test-suite tls-test
   type:                exitcode-stdio-1.0
