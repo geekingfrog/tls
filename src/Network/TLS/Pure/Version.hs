@@ -30,5 +30,5 @@ instance S.FromWire ProtocolVersion where
     0x0304 -> pure TLS13
     code   -> pure (Unknown code)
 
--- instance S.FixedSize ProtocolVersion where
---   type WireLength ProtocolVersion = 2
+instance S.FixedSize ProtocolVersion where
+  type ByteSize ProtocolVersion = 2

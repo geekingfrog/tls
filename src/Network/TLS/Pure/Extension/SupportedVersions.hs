@@ -34,7 +34,7 @@ instance S.ToWire (SupportedVersions a) where
 
 instance S.FromWire (SupportedVersions 'H.MT.ClientHello) where
   decode = do
-    versions <- S.decodeVector8 2
+    versions <- S.decodeVector8
     -- TODO check which TLS error that should generate
     when (V.null versions) $ S.throwError (Err.InvalidLength "empty versions for SupportedVersions")
     pure $ SupportedVersionsCH versions

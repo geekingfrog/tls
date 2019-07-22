@@ -81,4 +81,4 @@ instance S.ToWire SignatureAlgorithms where
     = S.encodeVector algs
 
 instance S.FromWire SignatureAlgorithms where
-  decode = SignatureAlgorithms <$> S.decodeVector16 2
+  decode = SignatureAlgorithms <$> S.decodeVector16

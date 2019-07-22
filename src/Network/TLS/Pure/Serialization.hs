@@ -2,7 +2,6 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE TypeApplications #-}
-{-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
@@ -178,27 +177,24 @@ encodeVector items
     traverse_ encode items
 
 decodeVector
-  :: (FromWire a, MonadTLSParser m)
+  :: forall a m. (FromWire a, FixedSize a, KnownNat (ByteSize a), MonadTLSParser m)
   => m Int
   -- ^ how to get the size
-  -> Int
-  -- ^ the size in byte of each item
   -> m (V.Vector a)
-decodeVector getLen itemLength = do
+decodeVector getLen = do
   len <- getLen
-  let (numberItems, remainder) = len `quotRem` itemLength
+  let itemSize = N.naturalToInt $ natVal (Proxy @(ByteSize a))
+  let (numberItems, remainder) = len `quotRem` itemSize
   when (remainder /= 0) $ throwError
     ( Err.InvalidLength
     $ "Given number of bytes (" <> show len <> ") not a multiple of "
-    <> show itemLength
+    <> show itemSize
     )
   isolate len $ V.replicateM numberItems decode
 
 decodeVector16, decodeVector8
-  :: (FromWire a, MonadTLSParser m)
-  => Int
-  -- ^ the size in byte of each item
-  -> m (V.Vector a)
+  :: (FromWire a, FixedSize a, KnownNat (ByteSize a), MonadTLSParser m)
+  => m (V.Vector a)
 decodeVector16 = decodeVector (fromIntegral <$> getWord16be)
 decodeVector8  = decodeVector (fromIntegral <$> getWord8)
 
