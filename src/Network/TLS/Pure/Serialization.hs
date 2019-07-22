@@ -1,3 +1,9 @@
+{-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE TypeApplications #-}
+{-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE DataKinds #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
@@ -19,6 +25,10 @@ import qualified Data.Serialize.Get     as Get
 import qualified Data.Serialize.Put     as Put
 import qualified Data.Vector            as V
 import           GHC.Word
+import Data.Kind (Type)
+import GHC.TypeNats
+import qualified GHC.Natural as N
+import Data.Proxy
 
 import qualified Network.TLS.Pure.Error as Err
 
@@ -142,16 +152,26 @@ instance FromWire Opaque32 where
     l <- fromIntegral <$> getWord32be
     Opaque32 <$> getByteString l
 
+-- | A typeclass for values which have a fixed size in byte on the wire
+class FixedSize a where
+  type ByteSize a :: Nat
+
+encodeVector' :: forall a. (ToWire a, FixedSize a, KnownNat (ByteSize a)) => V.Vector a -> Put.Put
+encodeVector' items =
+  let itemSize = N.naturalToInt $ natVal (Proxy @(ByteSize a))
+   in do
+        Put.putWord16be (fromIntegral $ V.length items * itemSize)
+        traverse_ encode items
+
 
 -- | encode a list of items, where each item has the same encoded length
 encodeVector
-  :: ToWire a
-  => Int
-  -- ^ the size in byte of each item
-  -> V.Vector a
+  :: forall a. (ToWire a, FixedSize a, KnownNat (ByteSize a))
+  => V.Vector a
   -> Put.Put
-encodeVector itemSize items
+encodeVector items
   = do
+    let itemSize = N.naturalToInt $ natVal (Proxy @(ByteSize a))
     Put.putWord16be (fromIntegral $ V.length items * itemSize)
     traverse_ encode items
 

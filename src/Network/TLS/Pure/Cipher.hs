@@ -1,5 +1,7 @@
-{-# LANGUAGE LambdaCase #-}
-{-# LANGUAGE StrictData #-}
+{-# LANGUAGE DataKinds    #-}
+{-# LANGUAGE LambdaCase   #-}
+{-# LANGUAGE StrictData   #-}
+{-# LANGUAGE TypeFamilies #-}
 
 module Network.TLS.Pure.Cipher where
 
@@ -35,13 +37,16 @@ instance S.FromWire Cipher where
     0x1305 -> pure AES128_CCM_8
     code   -> fail $ "Unknown Cipher code: " <> Dbg.showHex code
 
+instance S.FixedSize Cipher where
+  type ByteSize Cipher = 2
+
 newtype CipherSuites
   = CipherSuites { getCipherSuites :: V.Vector Cipher }
   deriving (Show, Eq)
 
 instance S.ToWire CipherSuites where
   encode (CipherSuites ciphers)
-    = S.encodeVector 2 ciphers
+    = S.encodeVector ciphers
 
 instance S.FromWire CipherSuites where
   decode = CipherSuites <$> S.decodeVector16 2

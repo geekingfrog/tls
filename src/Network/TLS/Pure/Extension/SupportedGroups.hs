@@ -1,4 +1,6 @@
-{-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE DataKinds    #-}
+{-# LANGUAGE LambdaCase   #-}
+{-# LANGUAGE TypeFamilies #-}
 
 module Network.TLS.Pure.Extension.SupportedGroups where
 
@@ -23,12 +25,15 @@ instance S.FromWire Group where
     -- 30 -> pure X448
     w -> fail $ "Unknown group: " <> show w
 
+instance S.FixedSize Group where
+  type ByteSize Group = 2
+
 newtype SupportedGroups
   = SupportedGroups { getSupportedGroups :: V.Vector Group }
   deriving (Show, Eq)
 
 instance S.ToWire SupportedGroups where
-  encode (SupportedGroups groups) = S.encodeVector 2 groups
+  encode (SupportedGroups groups) = S.encodeVector groups
 
 instance S.FromWire SupportedGroups where
   decode = SupportedGroups <$> S.decodeVector16 2

@@ -1,4 +1,6 @@
-{-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE DataKinds    #-}
+{-# LANGUAGE LambdaCase   #-}
+{-# LANGUAGE TypeFamilies #-}
 
 module Network.TLS.Pure.Extension.SignatureAlgorithms where
 
@@ -67,13 +69,16 @@ instance S.FromWire SignatureAlgorithm where
     0x0203 -> pure EcdsaSha1
     w -> S.throwError (Err.InvalidSignatureAlgorithm w)
 
+instance S.FixedSize SignatureAlgorithm where
+  type ByteSize SignatureAlgorithm = 2
+
 newtype SignatureAlgorithms
     = SignatureAlgorithms (V.Vector SignatureAlgorithm)
     deriving (Show, Eq)
 
 instance S.ToWire SignatureAlgorithms where
   encode (SignatureAlgorithms algs)
-    = S.encodeVector 2 algs
+    = S.encodeVector algs
 
 instance S.FromWire SignatureAlgorithms where
   decode = SignatureAlgorithms <$> S.decodeVector16 2
