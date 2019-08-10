@@ -56,7 +56,9 @@ selectKeyShare
 selectKeyShare chloData shloData = do
   clientKs <- note NoClientKeyShare $ Ext.findKeyShare (CH.chlo13dExtensions chloData)
   serverKs <- note NoServerKeyShare $ Ext.findKeyShare (SH.shlo13dExtensions shloData)
+
   let serverKse = case serverKs of KS.KeyShareSH kse -> kse
   let clientKses = case clientKs of KS.KeyShareCH kses -> kses
   note NoMatchingKeyShareEntry
     $ foldl' (\kp clientKse -> kp <|> KS.extractKeyPair serverKse clientKse) Nothing clientKses
+    -- TODO ^ too strict?

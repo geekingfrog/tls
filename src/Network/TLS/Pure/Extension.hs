@@ -63,7 +63,16 @@ decodeExtension
      , S.FromWire (KS.KeyShare a)
      )
   => m (Int, Extension a)
-decodeExtension = S.getWord16be >>= \case
+decodeExtension = S.getWord16be >>= decodeExtension'
+
+decodeExtension'
+  :: ( S.MonadTLSParser m
+     , S.FromWire (SV.SupportedVersions a)
+     , S.FromWire (KS.KeyShare a)
+     )
+  => Word16
+  -> m (Int, Extension a)
+decodeExtension' = \case
   43 -> getExt (SupportedVersions <$> S.decode)
   51 -> getExt (KeyShare <$> S.decode)
   13 -> getExt (SignatureAlgorithms <$> S.decode)
@@ -93,13 +102,11 @@ instance S.FromWire (Extensions 'H.MT.ClientHello) where
   decode = do
     l <- fromIntegral <$> S.getWord16be
     Extensions <$> S.decodeVectorVariable "extensions" l decodeExtension
-    -- Extensions . V.fromList <$> S.isolate l (Loops.untilM S.decode S.isEmpty)
 
 instance S.FromWire (Extensions 'H.MT.ServerHello) where
   decode = do
     l <- fromIntegral <$> S.getWord16be
     Extensions <$> S.decodeVectorVariable "extensions" l decodeExtension
-    -- Extensions . V.fromList <$> S.isolate l (Loops.untilM S.decode S.isEmpty)
 
 findKeyShare :: Extensions a -> Maybe (KS.KeyShare a)
 findKeyShare (Extensions exts) = V.find isKeyShare exts >>= getKs

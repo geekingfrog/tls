@@ -18,16 +18,9 @@ packages:
       sha256: 7c26d9584f8ad1a86d9f5cbd6f5a8b81219eaee992e5a098ddab29a6c0b4b2bf
   original:
     hackage: tasty-hedgehog-1.0.0.1
-- completed:
-    hackage: cryptohash-sha256-0.11.101.0@sha256:2790b29264ebf63dac368dd05ec931254e5c70b0ccbc87d0969903533b32b054,5417
-    pantry-tree:
-      size: 601
-      sha256: bc481921dd09d768cbc61589e42b68ae824d161da42519912151f01f9d94a886
-  original:
-    hackage: cryptohash-sha256-0.11.101.0
 snapshots:
 - completed:
-    size: 336189
-    url: https://raw.githubusercontent.com/commercialhaskell/stackage-snapshots/master/nightly/2018/10/12.yaml
-    sha256: 2c968eb6061487d98c94080ad22cde3e3203d9cc2d469f685483d94d130afeeb
-  original: nightly-2018-10-12
+    size: 500539
+    url: https://raw.githubusercontent.com/commercialhaskell/stackage-snapshots/master/lts/13/29.yaml
+    sha256: 006398c5e92d1d64737b7e98ae4d63987c36808814504d1451f56ebd98093f75
+  original: lts-13.29

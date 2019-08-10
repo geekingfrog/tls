@@ -25,4 +25,8 @@ tests = T.testGroup "Debug"
       BS.pack [0x01, 0x02] @?=
       [Dbg.hexStream|0
       102|]
+
+  , T.H.testCase "hex stream with space between bytes" $
+      BS.pack [0x01, 0x02] @?=
+      [Dbg.hexStream|01 02|]
   ]

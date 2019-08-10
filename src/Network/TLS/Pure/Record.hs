@@ -26,13 +26,25 @@ instance S.ToWire RecordContent where
   encode = \case
     Handshake h -> S.encode h
     ChangeCipherSpec -> S.encode (S.Opaque16 $ BS.singleton 0x01)
-    ApplicationData content -> S.encode content
+    ApplicationData content -> Put.putByteString (S.getOpaque16 content)
 
 data TLSRecord = TLSRecord
   { rVersion :: Version.ProtocolVersion
   , rContent :: RecordContent
   }
   deriving (Eq, Show)
+
+contentLength :: TLSRecord -> Int
+contentLength record = case rContent record of
+  Handshake c -> BS.length $ S.runTLSEncoder (S.encode c)
+  ChangeCipherSpec -> 1
+  ApplicationData c -> BS.length (S.getOpaque16 c)
+
+headerBytes :: TLSRecord -> BS.ByteString
+headerBytes record = S.runTLSEncoder $ do
+  encodeRecordContentType (rContent record)
+  S.encode (rVersion record)
+  Put.putWord16be (fromIntegral $ contentLength record)
 
 encodeRecordContentType :: RecordContent -> Put.Put
 encodeRecordContentType = \case

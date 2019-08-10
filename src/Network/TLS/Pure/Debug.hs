@@ -10,6 +10,7 @@ import qualified Data.Char               as C
 import           GHC.Word
 import           Instances.TH.Lift       ()
 import           Text.Printf             (printf)
+import qualified Data.ByteArray                         as BA
 
 import qualified Language.Haskell.TH       as TH
 import qualified Language.Haskell.TH.Quote as TH.Q
@@ -70,3 +71,7 @@ readByte (a, b) =
     toHex c = if C.isLetter c
       then C.ord (C.toLower c) - C.ord 'a' + 10
       else C.ord c - C.ord '0'
+
+
+toHexStream :: BA.ByteArrayAccess ba => ba -> String
+toHexStream = concatMap (printf "%02x") . BS.unpack . BA.convert

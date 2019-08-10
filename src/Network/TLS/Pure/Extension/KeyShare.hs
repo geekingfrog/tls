@@ -1,4 +1,4 @@
-{-# LANGUAGE BangPatterns #-}
+{-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE TupleSections #-}
 {-# LANGUAGE DeriveAnyClass #-}
 {-# LANGUAGE DeriveGeneric #-}
@@ -29,6 +29,7 @@ import qualified Network.TLS.Pure.Extension.SupportedGroups as Group
 import qualified Network.TLS.Pure.Handshake.MessageType     as H.MT
 import           Network.TLS.Pure.Prelude
 import qualified Network.TLS.Pure.Serialization             as S
+import qualified Network.TLS.Pure.Debug             as Dbg
 
 data KSE25519 = KSE25519
   { kse25519Public :: Curve25519.PublicKey
@@ -72,9 +73,10 @@ decodeKeyShareEntry = S.decode >>= \case
     case Crypto.eitherCryptoError (Curve25519.publicKey raw) of
       Left cryptoError -> S.throwError $ Err.CryptoFailed cryptoError
       -- l + 2 (word16 for the length of l) + 2 (length of the encoded group)
-      Right publicKey -> pure (l+4, X25519 $ KSE25519 publicKey Nothing)
+      Right publicKey -> pure (l+4, X25519 $ KSE25519 publicKey (Just $ Crypto.throwCryptoError $ Curve25519.secretKey [Dbg.hexStream|202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f|]))
 
   -- Group.X448 -> error "wip decode kse X448"
+  Group.UnknownGroup w -> error $ "cannot decodeKeyShareEntry for unknown group: " <> show w
 
 -- TODO see if it's worth to add another type parameter: agent (Client | Server)
 -- to enforce that the key share have the private key or not

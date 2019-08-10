@@ -45,6 +45,7 @@ library
                      , Network.TLS.Pure.Handshake
                      , Network.TLS.Pure.Handshake.ClientHello
                      , Network.TLS.Pure.Handshake.Common
+                     , Network.TLS.Pure.Handshake.KeyCalc
                      , Network.TLS.Pure.Handshake.ServerHello
                      , Network.TLS.Pure.Handshake.MessageType
                      , Network.TLS.Pure.Prelude

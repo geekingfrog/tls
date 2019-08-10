@@ -55,6 +55,7 @@ tests = T.testGroup "Roundtrip"
     , testProperty "All Extensions ClientHello" (roundtrip genExtensionsCH)
     , testProperty "All Extensions ServerHello" (roundtrip genExtensionsSH)
     ]
+  , testProperty "TLSRecord" (roundtrip genTLSRecord)
   ]
 
 genProtocolVersion :: H.Gen Version.ProtocolVersion
@@ -192,7 +193,10 @@ genTLSRecord = Rec.TLSRecord
   <*> genRecordContent
 
 genRecordContent :: H.Gen Rec.RecordContent
-genRecordContent = Rec.Handshake <$> genHandshake
+genRecordContent = Gen.choice
+  [ Rec.Handshake <$> genHandshake
+  , Rec.ApplicationData <$> genOpaque16
+  ]
 
 genHandshake :: H.Gen Hsk.Handshake
 genHandshake = Gen.choice
@@ -212,13 +216,16 @@ genShloData = SH.ServerHello13Data
   <$> genRandom
   <*> genOpaque8
   <*> genCipher
-  <*> pure (Ext.Extensions V.empty)
+  <*> pure (Ext.Extensions V.empty) -- TODO
   -- <*> genExtensionsSH
 
 
 genOpaque8 :: H.MonadGen m => m S.Opaque8
 genOpaque8 = S.Opaque8 <$> Gen.bytes (fromIntegral <$> (Range.linearBounded :: Range.Range Word8))
 
+-- limit the size to avoid overflows
+genOpaque16 :: H.MonadGen m => m S.Opaque16
+genOpaque16 = S.Opaque16 <$> Gen.bytes (fromIntegral <$> Range.linearFrom 0 0 1000)
 
 roundtrip
   :: (S.ToWire a, S.FromWire a, Show a, Eq a)

@@ -1,4 +1,4 @@
-resolver: nightly-2018-10-12
+resolver: lts-13.29
 
 packages:
 - .
@@ -6,4 +6,4 @@ packages:
 extra-deps:
   - hedgehog-1.0
   - tasty-hedgehog-1.0.0.1
-  - cryptohash-sha256-0.11.101.0
+  # - cryptohash-sha256-0.11.101.0

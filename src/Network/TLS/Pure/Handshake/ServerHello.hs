@@ -1,18 +1,19 @@
+{-# LANGUAGE DataKinds           #-}
+{-# LANGUAGE RecordWildCards     #-}
 {-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE DataKinds #-}
-{-# LANGUAGE StrictData #-}
-{-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE StrictData          #-}
 
 module Network.TLS.Pure.Handshake.ServerHello where
 
-import Control.Monad
+import           Control.Monad
+import qualified Data.Serialize.Put                     as Put
 
-import qualified Network.TLS.Pure.Cipher           as Cipher
-import qualified Network.TLS.Pure.Handshake.Common as H.C
-import qualified Network.TLS.Pure.Serialization    as S
-import qualified Network.TLS.Pure.Version          as Version
+import qualified Network.TLS.Pure.Cipher                as Cipher
+import qualified Network.TLS.Pure.Extension             as Extension
+import qualified Network.TLS.Pure.Handshake.Common      as H.C
 import qualified Network.TLS.Pure.Handshake.MessageType as H.MT
-import qualified Network.TLS.Pure.Extension as Extension
+import qualified Network.TLS.Pure.Serialization         as S
+import qualified Network.TLS.Pure.Version               as Version
 
 
 data ServerHello13Data = ServerHello13Data
@@ -43,3 +44,7 @@ instance S.ToWire ServerHello13Data where
   encode shlo = do
     S.encode Version.TLS12 -- legacy version
     S.encode (shlo13dRandom shlo)
+    S.encode (shlo13dLegacySessionId shlo)
+    S.encode (shlo13dCipherSuite shlo)
+    Put.putWord8 0 -- compression method
+    S.encode (shlo13dExtensions shlo)
